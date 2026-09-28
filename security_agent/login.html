@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · Security Monitoring Agent</title>
+<style>
+:root { color-scheme: light;
+  --card: #ffffff; --text: #0f1b2d; --text-2: #4a5568; --muted: #7a8599;
+  --border: #e2e8f0; --field: #f7f9fc; --accent: #1f6fe5; --accent-hover: #1a5fc4; --bad: #d03b3b; --bad-soft: #fbe7e7; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { min-height: 100%; display: grid; place-items: center; padding: 24px;
+  background: radial-gradient(1100px 560px at 50% -8%, #eaf2fe 0, transparent 62%), #ffffff;
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--text); }
+.card { background: var(--card); width: min(400px, 100%); border: 1px solid var(--border); border-radius: 18px; padding: 32px 30px 28px;
+  box-shadow: 0 12px 40px rgba(15,27,45,.10); }
+.brand { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 20px; text-align: center; }
+.shield { width: 56px; height: 56px; border-radius: 16px; background: linear-gradient(135deg, #2f80ed, #1a56c4);
+  display: grid; place-items: center; color: #fff; box-shadow: 0 8px 20px rgba(31,111,229,.30); }
+.brand h1 { font-size: 19px; margin: 4px 0 0; }
+.brand p { margin: 0; color: var(--muted); font-size: 13px; }
+label { display: block; font-weight: 600; font-size: 13px; margin: 14px 0 5px; }
+input { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 11px 12px; font: inherit; color: var(--text); background: var(--field); }
+input::placeholder { color: var(--muted); }
+input:focus { outline: 2px solid var(--accent); outline-offset: -1px; background: #fff; }
+.btn { width: 100%; margin-top: 20px; border: 0; border-radius: 10px; background: var(--accent); color: #fff;
+  font-weight: 650; font-size: 15px; padding: 12px; cursor: pointer; }
+.btn:hover { background: var(--accent-hover); }
+.btn:disabled { opacity: .6; cursor: not-allowed; }
+.err { display: none; margin-top: 14px; background: var(--bad-soft); color: var(--bad); border-radius: 9px;
+  padding: 9px 12px; font-size: 13px; font-weight: 600; }
+.err.show { display: block; }
+.foot { margin-top: 18px; text-align: center; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand">
+      <div class="shield"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+      <h1>Security Monitoring Agent</h1>
+      <p>Sign in to the admin dashboard</p>
+    </div>
+    <form id="form" autocomplete="on">
+      <label for="email">Admin email</label>
+      <input id="email" name="email" type="email" autocomplete="username" placeholder="you@example.com" required autofocus>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required>
+      <div class="err" id="err" role="alert"></div>
+      <button class="btn" type="submit" id="submit">Sign in</button>
+    </form>
+    <div class="foot">Authorized administrators only.</div>
+  </main>
+<script>
+const form = document.getElementById("form"), err = document.getElementById("err"), btn = document.getElementById("submit");
+form.addEventListener("submit", async e => {
+  e.preventDefault();
+  btn.disabled = true; err.classList.remove("show");
+  try {
+    const res = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json", "X-Dashboard": "1" },
+      body: JSON.stringify({ email: document.getElementById("email").value, password: document.getElementById("password").value }) });
+    if (res.ok) { location.href = "/"; return; }
+    const data = await res.json().catch(() => ({}));
+    err.textContent = data.message || "Sign in failed"; err.classList.add("show");
+  } catch { err.textContent = "Could not reach the server"; err.classList.add("show"); }
+  btn.disabled = false;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+requests>=2.31
+dnspython>=2.4
+PyYAML>=6.0
+openpyxl>=3.1

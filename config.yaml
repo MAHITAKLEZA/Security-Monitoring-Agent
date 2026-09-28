@@ -1,0 +1,121 @@
+# Security Monitoring Agent configuration
+# No dashboard and no alerting: each run writes JSON + Markdown reports to `report.output_dir`.
+
+# Settings shared by all sites
+target:
+  timeout: 15
+  user_agent: "SecurityMonitor/1.0 (authorized self-monitoring)"
+
+# Sites to monitor. Only `url` is required. Optional per site:
+#   name    - label used for report/state folders (default: host name)
+#   domain  - registrable domain for DNS/blacklist checks (default: host without "www.")
+#   pages   - pages to baseline and scan for malware (default: ["/"])
+#   checks  - per-site overrides of the `checks:` section below
+targets: []
+  # No sites are configured here. Add websites from the dashboard's "Add Website" button
+  # (saved in sites.json), or list them here. Example WordPress site with an application password:
+  #
+  # - url: https://kleza.io/
+  #   checks:
+  #     wordpress:
+  #       enabled: true
+  #       username: ""                              # WordPress user that owns the application password
+  #       app_password_env: KLEZA_WP_APP_PASSWORD   # password read from this env var...
+  #       app_password_file: secrets/kleza.io.txt   # ...or this file (username=.../password=...)
+  #
+  # - name: my-other-site
+  #   url: https://www.example.com/
+  #   pages: [/, /login, /pricing]
+  #   checks:
+  #     ssl: { expiry_warning_days: 45 }
+  #     exposed_files: { enabled: false }
+  #
+  # - https://another-site.com/        # short form: just the URL
+
+checks:
+  ssl:
+    enabled: true
+    expiry_warning_days: 30
+    expiry_critical_days: 7
+
+  headers:
+    enabled: true
+
+  exposed_files:
+    enabled: true
+    max_workers: 4
+    max_sourcemap_checks: 5
+    # Extra paths to probe. `pattern` (regex) is optional; without it any 200 non-HTML response is flagged.
+    extra_paths: []
+    #  - { path: /internal/debug.log, severity: HIGH, pattern: "ERROR|WARN" }
+
+  changes:
+    enabled: true
+    # Visible-text similarity below this ratio (0-1) is reported as a significant content change
+    content_similarity_threshold: 0.6
+    # false = changes keep being reported until approved with `--accept-changes`
+    auto_update_baseline: false
+
+  malware:
+    enabled: true
+    scan_same_origin_js: true
+    max_js_files: 25
+    # Hidden iframes from these domains are expected (e.g. GTM <noscript> iframe)
+    trusted_hidden_iframe_domains:
+      - googletagmanager.com
+    # Optional: set this environment variable to a Google Safe Browsing API key to enable the lookup
+    safe_browsing_api_key_env: GSB_API_KEY
+    # Inside scan: on WordPress sites with an application password, also scan posts, pages, drafts, blocks,
+    # templates, widgets, media, admins, plugins and settings from inside through the REST API (read-only)
+    inside_scan: true
+    # External scripts embedded in content from these domains are expected (inside scan)
+    trusted_script_domains: []
+
+  vulnerabilities:
+    enabled: true
+
+  dns:
+    enabled: true
+    domain_expiry_warning_days: 45
+
+  third_party:
+    enabled: true
+    # If non-empty, any external script domain not listed here is reported as unapproved
+    allowed_script_domains: []
+
+  wordpress:
+    # Off by default: enable it per WordPress site under `targets:` (see kleza.io above).
+    # Without credentials only the public checks run (user enumeration, XML-RPC, core version).
+    # With an application password it also audits plugins, themes, admins, app passwords and Site Health.
+    enabled: false
+    username: ""
+    app_password_env: WP_APP_PASSWORD
+    # Optional: WPScan API token (free tier: 25 requests/day) to report known plugin vulnerabilities
+    wpscan_api_token_env: WPSCAN_API_TOKEN
+    max_admins: 3
+    stale_app_password_days: 90
+    abandoned_plugin_days: 730
+
+report:
+  output_dir: reports          # reports/<site>/..., plus reports/summary.md across all sites
+  state_dir: state             # state/<site>.json baselines
+  # Exit code 2 when the worst finding on any site is at or above this severity (useful for cron/CI)
+  fail_on: HIGH
+  # How many sites to scan at the same time
+  max_parallel_sites: 2
+
+schedule:
+  # The dashboard server (--serve) scans every site once a day at this local time (HH:MM, 24-hour clock)
+  daily_at: "09:00"
+  # Used with --loop instead: minutes between scans
+  interval_minutes: 60
+
+# Sites added from the dashboard's "Add Link" button are saved here (config.yaml is never rewritten)
+sites_file: sites.json
+
+# Login for the --serve dashboard. Change the password before using this for real.
+auth:
+  enabled: true
+  email: admin@kleza.io
+  password: change-me
+  name: Administrator

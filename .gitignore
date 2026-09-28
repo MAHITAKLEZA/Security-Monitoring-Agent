@@ -1,0 +1,26 @@
+# Secrets — never commit application passwords or tokens
+secrets/
+*.env
+.env
+
+# Dashboard-added sites (may contain a WordPress username)
+sites.json
+
+# Generated scan output and baselines
+reports/
+state/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
