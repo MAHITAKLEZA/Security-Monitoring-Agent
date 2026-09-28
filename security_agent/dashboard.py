@@ -168,7 +168,7 @@ class DashboardServer:
 
     def _attach_wordpress(self, entry, url, name, wp_username, wp_password):
         """Enable the WordPress check for a dashboard-added site. The application password is written to a
-        local secrets/<slug>.txt file (never stored in sites.json), matching how config.yaml sites work."""
+        local secrets/<slug>.env file (never stored in sites.json), matching how config.yaml sites work."""
         wp_username = (wp_username or "").strip()
         wp_password = (wp_password or "").strip()
         if not (wp_username or wp_password):
@@ -178,7 +178,7 @@ class DashboardServer:
             wp["username"] = wp_username
         if wp_password:
             slug = _slug(name or urlparse(url).hostname or "site")
-            secret_path = Path("secrets") / f"{slug}.txt"
+            secret_path = Path("secrets") / f"{slug}.env"
             secret_path.parent.mkdir(parents=True, exist_ok=True)
             lines = ([f"username={wp_username}"] if wp_username else []) + [f"password={wp_password}"]
             secret_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

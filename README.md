@@ -143,7 +143,7 @@ The server listens only on `127.0.0.1`. Scan requests need a custom header and a
 4. Run `python -m security_agent --site kleza.io --checks wordpress`.
 
 Instead of the environment variable you can put the credentials in the file named by `app_password_file`
-(kleza.io uses `secrets/kleza.io.txt`, and the `secrets/` folder is git-ignored):
+(kleza.io uses `secrets/kleza.io.env`, and the `secrets/` folder is git-ignored; copy `secrets/kleza.io.env.example` to start):
 ```
 username=your-wp-admin-user
 password=abcd efgh ijkl mnop qrst uvwx

@@ -21,7 +21,7 @@ targets: []
   #       enabled: true
   #       username: ""                              # WordPress user that owns the application password
   #       app_password_env: KLEZA_WP_APP_PASSWORD   # password read from this env var...
-  #       app_password_file: secrets/kleza.io.txt   # ...or this file (username=.../password=...)
+  #       app_password_file: secrets/kleza.io.env   # ...or this file (username=.../password=...)
   #
   # - name: my-other-site
   #   url: https://www.example.com/
