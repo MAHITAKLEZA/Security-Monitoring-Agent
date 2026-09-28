@@ -93,7 +93,6 @@ These enable extra checks and are read from environment variables at runtime:
 
 | Variable | Enables |
 |---|---|
-| `WPSCAN_API_TOKEN` | Known plugin vulnerabilities in the WordPress check ([free tier at wpscan.com](https://wpscan.com/), 25 requests/day) |
 | `KLEZA_WP_APP_PASSWORD` (or a per-site `app_password_file`) | Authenticated WordPress scan and inside malware scan |
 
 ## Usage
