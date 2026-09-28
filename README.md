@@ -93,7 +93,6 @@ These enable extra checks and are read from environment variables at runtime:
 
 | Variable | Enables |
 |---|---|
-| `GSB_API_KEY` | Google Safe Browsing malware/phishing lookup ([free key](https://developers.google.com/safe-browsing)) |
 | `WPSCAN_API_TOKEN` | Known plugin vulnerabilities in the WordPress check ([free tier at wpscan.com](https://wpscan.com/), 25 requests/day) |
 | `KLEZA_WP_APP_PASSWORD` (or a per-site `app_password_file`) | Authenticated WordPress scan and inside malware scan |
 
@@ -185,12 +184,6 @@ state/indexly.json                   # baselines: certificate, DNS records, page
 ```
 
 Each report contains the **security status** (SECURE / GOOD / NEEDS ATTENTION / AT RISK / CRITICAL), a **risk score** (0–100), a **risk summary** by severity and by check, deduplicated **recommendations**, and **detailed findings** with evidence.
-
-## Optional: Google Safe Browsing
-Set a free API key to add Google's malware and phishing blacklist lookup:
-```powershell
-$env:GSB_API_KEY = "your-key"
-```
 
 ## Notes
 - Scans are passive or low-impact: ordinary GET/OPTIONS requests at 4-way concurrency, with no exploitation or fuzzing. Only scan sites you own or are authorized to test.
