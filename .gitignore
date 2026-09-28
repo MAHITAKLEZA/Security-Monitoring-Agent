@@ -1,5 +1,8 @@
 # Secrets — never commit application passwords or tokens
-secrets/
+# (real credential files are ignored; only the *.example template is tracked)
+secrets/*
+!secrets/.gitignore
+!secrets/*.example
 *.env
 .env
 
