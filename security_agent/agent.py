@@ -122,14 +122,14 @@ class SecurityMonitoringAgent:
         print(f"Dashboard: {write_dashboard(self.config, self.targets)}")
         return reports
 
-    def run_daily(self, at, job=None):
-        """Run `job` (default: a scan of every site) each day at local time `at` ("HH:MM")."""
+    def run_daily(self, at, job=None, tz=None):
+        """Run `job` (default: a scan of every site) each day at `at` ("HH:MM") in `tz` (default: local time)."""
         job = job or self.run_once
         while True:
-            target = next_daily_run(at)
+            target = next_daily_run(at, tz=tz)
             log.info("Next scheduled scan: %s", target.strftime("%Y-%m-%d %H:%M"))
             # Short sleeps against the wall clock, so a PC waking from sleep after the target time still runs the scan
-            while (remaining := (target - datetime.now()).total_seconds()) > 0:
+            while (remaining := (target - datetime.now(tz)).total_seconds()) > 0:
                 time.sleep(min(remaining, 60))
             try:
                 job()
