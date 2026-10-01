@@ -239,7 +239,14 @@ class DashboardServer:
     # ---- HTTP -------------------------------------------------------------
     def _handler(self):
         server = self
-        allowed_hosts = {f"127.0.0.1:{self.port}", f"localhost:{self.port}", f"{self.host}:{self.port}"}
+        allowed_hosts = {
+            f"127.0.0.1:{self.port}",
+            f"localhost:{self.port}",
+            f"{self.host}:{self.port}",
+            # the live dashboard, reached through the reverse proxy
+            "securityagent.kleza.io",
+            f"securityagent.kleza.io:{self.port}",
+        }
         reports_root = Path(self.config["report"]["output_dir"]).resolve()
 
         class Handler(BaseHTTPRequestHandler):
