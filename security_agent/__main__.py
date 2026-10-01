@@ -9,7 +9,7 @@ from .checks import ALL_CHECKS
 from .config import load_config, resolve_targets
 from .dashboard import DashboardServer, write_dashboard
 from .models import Severity
-from .schedule import next_daily_run, parse_daily_at
+from .schedule import next_daily_run, parse_daily_at, schedule_tz
 
 
 def main(argv=None):
@@ -87,8 +87,13 @@ def main(argv=None):
         elif daily_at:
             config["schedule"].update(active=True, mode="daily")
             # Runs through the server so the dashboard shows progress and never overlaps a scan started from the page
-            threading.Thread(target=agent.run_daily, args=(daily_at, lambda: server.start_scan(None)), daemon=True).start()
-            print(f"Scanning all sites daily at {daily_at} (next: {next_daily_run(daily_at):%Y-%m-%d %H:%M})", flush=True)
+            tz = schedule_tz(config["schedule"].get("timezone"))
+            # scheduled=True: the Teams card is sent once this daily scan finishes
+            threading.Thread(target=agent.run_daily,
+                             args=(daily_at, lambda: server.start_scan(None, scheduled=True), tz), daemon=True).start()
+            zone = config["schedule"].get("timezone") or "local time"
+            print(f"Scanning all sites daily at {daily_at} {zone} "
+                  f"(next: {next_daily_run(daily_at, tz=tz):%Y-%m-%d %H:%M})", flush=True)
         server.serve_forever(open_browser=not args.no_browser)
         return 0
     if args.loop:

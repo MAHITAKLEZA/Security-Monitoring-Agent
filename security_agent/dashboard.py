@@ -16,7 +16,8 @@ from urllib.parse import unquote, urlparse
 
 from .config import _slug, load_managed_sites, resolve_targets, save_managed_sites
 from .excel import to_xlsx
-from .schedule import next_daily_run
+from .notify import save_webhook, send_daily_card, webhook_status
+from .schedule import next_daily_run, schedule_tz
 
 log = logging.getLogger("security_agent.dashboard")
 TEMPLATE = Path(__file__).with_name("dashboard.html")
@@ -70,7 +71,9 @@ def collect_data(config, targets, server=False, scan_status=None):
             "schedule_active": bool(config["schedule"].get("active")),
             "schedule_mode": config["schedule"].get("mode") or ("daily" if config["schedule"].get("daily_at") else "interval"),
             "daily_at": config["schedule"].get("daily_at"),
-            "next_scan": (next_daily_run(config["schedule"]["daily_at"]).astimezone().isoformat()
+            "timezone": config["schedule"].get("timezone") or "",
+            "teams": webhook_status(config) if server else None,
+            "next_scan": (next_daily_run(config["schedule"]["daily_at"], tz=schedule_tz(config["schedule"].get("timezone"))).astimezone().isoformat()
                           if config["schedule"].get("active") and config["schedule"].get("mode") == "daily" else None),
             "fail_on": config["report"]["fail_on"],
             "output_dir": str(out),
@@ -197,7 +200,7 @@ class DashboardServer:
         self._reload_targets()
 
     # ---- scans ------------------------------------------------------------
-    def start_scan(self, slug=None):
+    def start_scan(self, slug=None, scheduled=False):
         targets = [t for t in self.targets if slug in (None, t["slug"])]
         if not targets:
             return False, "no sites to scan"
@@ -206,10 +209,10 @@ class DashboardServer:
                 return False, "a scan is already running"
             self.status.update(running=True, site=slug, error=None, done=0, total=len(targets),
                                started_at=datetime.now(timezone.utc).isoformat(), finished_at=None)
-        threading.Thread(target=self._scan, args=(targets,), daemon=True).start()
+        threading.Thread(target=self._scan, args=(targets, scheduled), daemon=True).start()
         return True, "started"
 
-    def _scan(self, targets):
+    def _scan(self, targets, scheduled=False):
         error = None
         def scan_one(target):
             self.agent._safe_scan(target)  # never raises; a failed scan is recorded as a finding
@@ -221,6 +224,8 @@ class DashboardServer:
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 list(pool.map(scan_one, targets))
             write_dashboard(self.config, self.targets)
+            if scheduled:  # the daily scan: send the one Teams card with every site's high-risk issues
+                send_daily_card(self.config, self.targets)
         except Exception as exc:  # surface to the UI instead of killing the thread silently
             log.exception("Dashboard-triggered scan failed")
             error = f"{exc.__class__.__name__}: {exc}"
@@ -359,6 +364,12 @@ class DashboardServer:
                     if path == "/api/sites/delete":
                         server.remove_site(body.get("slug"))
                         return self._json(200, {"ok": True})
+                    if path == "/api/teams":
+                        save_webhook(server.config, body.get("webhook_url"))
+                        return self._json(200, {"ok": True, "teams": webhook_status(server.config)})
+                    if path == "/api/teams/test":
+                        ok, message = send_daily_card(server.config, server.targets, test=True)
+                        return self._json(200 if ok else 502, {"ok": ok, "message": message})
                 except ValueError as exc:
                     return self._json(400, {"ok": False, "message": str(exc)})
                 self._json(404, {"error": "not found"})

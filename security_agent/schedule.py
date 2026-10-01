@@ -1,6 +1,17 @@
 """Daily scan time helpers (local time of the machine running the agent)."""
 
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+def schedule_tz(name):
+    """ZoneInfo for schedule.timezone (e.g. "Asia/Kolkata"), or None to use the machine's local time."""
+    if not name:
+        return None
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ValueError(f"schedule.timezone is not a known time zone: {name!r} (e.g. Asia/Kolkata)") from None
 
 
 def parse_daily_at(value):
@@ -14,9 +25,9 @@ def parse_daily_at(value):
     return hour, minute
 
 
-def next_daily_run(at, now=None):
-    """Next local datetime at `at` ("HH:MM") strictly after `now`."""
-    now = now or datetime.now()
+def next_daily_run(at, now=None, tz=None):
+    """Next datetime at `at` ("HH:MM") strictly after `now`, in `tz` (default: local time)."""
+    now = now or datetime.now(tz)
     hour, minute = parse_daily_at(at)
     run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
     return run if run > now else run + timedelta(days=1)

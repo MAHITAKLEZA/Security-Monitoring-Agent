@@ -864,12 +864,56 @@ function pageSettings(v) {
           <td style="text-align:right">${(st.checks || {})[k] === false ? '<span class="status none">Disabled</span>' : '<span class="status safe"><span class="dot" style="background:var(--good)"></span>Enabled</span>'}</td></tr>`).join("")}</tbody></table>
       </div>
     </div>
+    ${DATA.server && st.teams ? teamsCard(st) : ""}
     <div class="card mt"><div class="card-h"><h2>Appearance</h2></div>
       <div class="seg" role="group" aria-label="Theme">${["light", "dark"].map(t => `<button type="button" data-theme-opt="${t}" aria-pressed="${theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
     </div>`;
   v.querySelectorAll("[data-theme-opt]").forEach(b => b.onclick = () => { const t = b.dataset.themeOpt; store.set("theme", t); applyTheme(t); render(); });
   const so = v.querySelector("#signOut");
   if (so) so.onclick = async () => { await api("/api/logout"); location.href = "/login"; };
+  if (DATA.server && st.teams) bindTeams(v);
+}
+
+// Teams alerts: the webhook URL is stored on the server; the page only ever sees a masked version
+function teamsCard(st) {
+  const t = st.teams, when = `${fmtClock(st.daily_at)}${st.timezone ? ` (${st.timezone})` : ""}`;
+  return `<div class="card mt"><div class="card-h"><h2>Teams alerts</h2>
+      <div class="right">${t.configured ? '<span class="status safe"><span class="dot" style="background:var(--good)"></span>Connected</span>'
+        : '<span class="status none">Not connected</span>'}</div></div>
+    <dl class="kv">
+      <dt>Webhook URL</dt><dd>${t.configured ? `<code>${esc(t.masked)}</code>` : '<span class="muted">Not set</span>'}
+        ${t.from_env ? '<div class="muted">Set by the <code>TEAMS_WEBHOOK_URL</code> environment variable on the server.</div>' : ""}</dd>
+      <dt>Sends</dt><dd>One card every day after the ${esc(when)} scan
+        <div class="muted">Only ${esc(t.min_severity)} and CRITICAL issues, all sites in one card. Nothing is sent on days without them.</div></dd>
+    </dl>
+    ${t.from_env ? "" : `<div class="field mt"><label for="teamsUrl">${t.configured ? "Replace webhook URL" : "Webhook URL"}</label>
+      <input type="url" id="teamsUrl" placeholder="https://…logic.azure.com/workflows/…" autocomplete="off" spellcheck="false">
+      <div class="hint">In Teams: channel, then More options, then Workflows, then "Post to a channel when a webhook request is received". Paste the URL it gives you.</div></div>`}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+      ${t.from_env ? "" : '<button class="btn primary" id="teamsSave">Save</button>'}
+      ${t.configured ? '<button class="btn outline" id="teamsTest">Send test card</button>' : ""}
+      ${t.configured && !t.from_env ? '<button class="btn danger" id="teamsRemove">Remove</button>' : ""}
+    </div>
+    <div class="muted" id="teamsMsg" role="status" style="margin-top:8px"></div>
+  </div>`;
+}
+function bindTeams(v) {
+  const msg = v.querySelector("#teamsMsg"), say = (text, bad) => { msg.textContent = text; msg.style.color = bad ? "var(--bad)" : ""; };
+  const save = async url => {
+    const res = await api("/api/teams", { webhook_url: url });
+    if (!res.ok) return say(res.data.message || "Could not save the webhook URL", true);
+    DATA.settings.teams = res.data.teams; render();
+    const m = document.getElementById("teamsMsg"); if (m) m.textContent = url ? "Saved. Use Send test card to check the channel." : "Webhook URL removed.";
+  };
+  const sv = v.querySelector("#teamsSave"), test = v.querySelector("#teamsTest"), rm = v.querySelector("#teamsRemove");
+  if (sv) sv.onclick = () => { const url = v.querySelector("#teamsUrl").value.trim();
+    url ? save(url) : say("Paste the webhook URL first", true); };
+  if (rm) rm.onclick = () => { if (confirm("Remove the Teams webhook? Daily cards stop until a new URL is saved.")) save(""); };
+  if (test) test.onclick = async () => {
+    test.disabled = true; say("Sending…");
+    const res = await api("/api/teams/test");
+    test.disabled = false; say(res.data.message || (res.ok ? "Card sent to Teams" : "Could not send the card"), !res.ok);
+  };
 }
 
 /* ================= render ================= */

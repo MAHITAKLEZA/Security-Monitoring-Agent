@@ -105,10 +105,20 @@ report:
   max_parallel_sites: 2
 
 schedule:
-  # The dashboard server (--serve) scans every site once a day at this local time (HH:MM, 24-hour clock)
-  daily_at: "09:00"
+  # The dashboard server (--serve) scans every site once a day at this time (HH:MM, 24-hour clock),
+  # then sends the Teams card if a webhook is set in the dashboard (Settings > Teams alerts)
+  daily_at: "10:15"
+  # Time zone for daily_at (IANA name). Empty = the server's local time, which is often UTC on a hosted server.
+  timezone: Asia/Kolkata
   # Used with --loop instead: minutes between scans
   interval_minutes: 60
+
+# Daily Teams card: one card after the scheduled scan, listing only sites with findings at or above min_severity.
+# The webhook URL is set from the dashboard (Settings > Teams alerts) and saved to webhook_url_file (git-ignored).
+notifications:
+  teams:
+    webhook_url_file: secrets/teams.env
+    min_severity: HIGH
 
 # Sites added from the dashboard's "Add Link" button are saved here (config.yaml is never rewritten)
 sites_file: sites.json
