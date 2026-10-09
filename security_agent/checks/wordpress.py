@@ -252,7 +252,8 @@ def _plugin_findings(ctx, api, cfg):
                                     f"{slug} was closed on {info.get('closed_date', '?')} "
                                     f"({info.get('reason_text') or info.get('reason') or 'no reason given'}). "
                                     "Plugins are often closed for unpatched security issues.",
-                                    f"Remove {name} or replace it with a maintained alternative."))
+                                    f"Remove {name} or replace it with a maintained alternative.",
+                                    {"plugin": slug, "closed": True}))
         else:
             latest = info["version"]
             if _v(version) < _v(latest):
@@ -265,7 +266,8 @@ def _plugin_findings(ctx, api, cfg):
             if age is not None and age > abandoned_days:
                 findings.append(Finding(NAME, f"Possibly abandoned plugin: {name}", S.LOW,
                                         f"No release on wordpress.org for {age} days.",
-                                        f"Replace {name} with an actively maintained plugin."))
+                                        f"Replace {name} with an actively maintained plugin.",
+                                        {"plugin": slug, "abandoned_days": age}))
 
     if inactive:
         findings.append(Finding(NAME, f"{len(inactive)} inactive plugin(s) installed", S.LOW, ", ".join(inactive),

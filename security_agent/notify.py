@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 
 import requests
 
+from .ignored import apply_ignored, load_ignored
 from .models import Severity as S
 from .schedule import schedule_tz
 
@@ -80,12 +81,14 @@ def _previous_keys(config):
 
 def _site_alerts(config, targets, threshold):
     out = Path(config["report"]["output_dir"])
+    ignored = load_ignored(config)  # findings hidden with "Ignore" in the dashboard are not sent to Teams
     rows = []
     for t in targets:
         try:
             latest = json.loads((out / t["slug"] / "latest.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
+        latest = apply_ignored(latest, ignored.get(t["slug"], {}))
         alerts = [f for f in latest.get("findings", []) if S.parse(f["severity"]) >= threshold]
         if alerts:
             rows.append({"name": t["name"], "slug": t["slug"], "latest": latest, "alerts": alerts})

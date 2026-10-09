@@ -14,6 +14,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+import requests
+
+from .checks.wordpress import credentials as wp_credentials
+from .ignored import apply_ignored, ignore_key, load_ignored, save_ignored
 from .config import _slug, load_managed_sites, resolve_targets, save_managed_sites
 from .excel import to_xlsx
 from .notify import save_webhook, send_daily_card, webhook_status
@@ -34,6 +38,17 @@ def _read_json(path):
         return None
 
 
+def _site_title(config, target):
+    """The site's own <title>, taken from the page baseline saved by the content-change check."""
+    state = _read_json(Path(config["report"].get("state_dir", "state")) / f"{target['slug']}.json") or {}
+    pages = (state.get("changes") or {}).get("pages") or {}
+    for page in [*target.get("pages", ["/"]), *pages]:
+        title = ((pages.get(page) or {}).get("title") or "").strip()
+        if title:
+            return " ".join(title.split())
+    return ""
+
+
 def _read_history(path):
     rows = []
     try:
@@ -50,16 +65,18 @@ def _read_history(path):
 
 def collect_data(config, targets, server=False, scan_status=None):
     out = Path(config["report"]["output_dir"])
+    ignored = load_ignored(config)
     sites = []
     for t in targets:
         site_dir = out / t["slug"]
         sites.append({
             "name": t["name"],
+            "title": _site_title(config, t),
             "slug": t["slug"],
             "url": t["url"],
             "pages": t.get("pages", ["/"]),
             "managed": t.get("managed", False),
-            "latest": _read_json(site_dir / "latest.json"),
+            "latest": apply_ignored(_read_json(site_dir / "latest.json"), ignored.get(t["slug"], {})),
             "history": _read_history(site_dir / "history.jsonl"),
         })
     return {
@@ -83,6 +100,7 @@ def collect_data(config, targets, server=False, scan_status=None):
                       "enabled": bool(config.get("auth", {}).get("enabled", False))},
         },
         "sites": sites,
+        "ignored": ignored,
     }
 
 
@@ -109,6 +127,10 @@ def _normalize_site_url(raw):
     if not host or not (re.fullmatch(r"[a-z0-9.-]+", host) and ("." in host or host == "localhost")):
         raise ValueError("That doesn't look like a valid website address")
     return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}{parsed.path or '/'}"
+
+
+class FixError(Exception):
+    """WordPress refused or couldn't make a change."""
 
 
 class DashboardServer:
@@ -198,6 +220,125 @@ class DashboardServer:
                  if s["url"].rstrip("/").lower() != target["url"].rstrip("/").lower()]
         save_managed_sites(self.config, sites)
         self._reload_targets()
+
+    def set_ignored(self, slug, title=None, check=None, severity=None, key=None, ignore=True):
+        """Ignore a finding (by its title) or un-ignore one (by its key) for one site."""
+        if not any(t["slug"] == slug for t in self.targets):
+            raise ValueError("Unknown site")
+        key = key or ignore_key(title)
+        if not key or len(key) > 500:
+            raise ValueError("Invalid finding")
+        with self.lock:
+            data = load_ignored(self.config)
+            entries = data.setdefault(slug, {})
+            if ignore:
+                entries[key] = {"title": title or entries.get(key, {}).get("title", key), "check": check, "severity": severity}
+            else:
+                entries.pop(key, None)
+            if not entries:
+                data.pop(slug, None)
+            save_ignored(self.config, data)
+        return data
+
+    def fix_wordpress(self, slug, action, item=None):
+        """Fix a WordPress issue through the site's REST API with its saved application password, then rescan.
+        Core API: remove one plugin (`item` = its folder) or delete every inactive plugin. Updates use the
+        hostinger-ai/plugin-update and theme-update abilities (Hostinger AI Assistant plugin), since the core API
+        has no update command; sites without that plugin get an error saying so."""
+        target = next((t for t in self.targets if t["slug"] == slug), None)
+        if target is None:
+            raise ValueError("Unknown site")
+        if action not in ("remove_plugin", "delete_inactive_plugins", "update_plugin", "update_theme"):
+            raise ValueError("Unknown action")
+        if action != "delete_inactive_plugins" and not re.fullmatch(r"[A-Za-z0-9._-]+", item or ""):
+            raise ValueError("Invalid plugin")
+        wp_cfg = target["checks"].get("wordpress", {})
+        auth = wp_credentials(wp_cfg) if wp_cfg.get("enabled") else None
+        if not auth:
+            raise ValueError("No application password is saved for this site")
+        origin = "{0.scheme}://{0.netloc}".format(urlparse(target["url"]))
+        if not origin.startswith("https://"):
+            raise ValueError("The application password is only sent over HTTPS, and this site uses http://")
+        api = requests.Session()
+        api.auth, api.headers["User-Agent"] = auth, "SecurityMonitor/1.0"
+
+        def call(method, path, **json_body):
+            # POST + method override: some hosts block real PUT/DELETE requests
+            try:
+                resp = api.post(f"{origin}/wp-json/wp/v2{path}", json=json_body or None, timeout=120,
+                                headers={} if method == "POST" else {"X-HTTP-Method-Override": method})
+            except requests.RequestException as exc:
+                raise FixError(f"Could not reach the site: {exc.__class__.__name__}") from exc
+            try:
+                data = resp.json()
+            except ValueError:
+                data = None
+            if resp.status_code in (401, 403):
+                raise FixError("WordPress refused the application password: it must belong to an administrator "
+                               f"({(data or {}).get('message') or f'HTTP {resp.status_code}'}).")
+            if not resp.ok:
+                msg = (data or {}).get("message") if isinstance(data, dict) else None
+                raise FixError(re.sub(r"<[^>]+>", "", str(msg or f"WordPress answered HTTP {resp.status_code}"))[:300])
+            return data
+
+        def ability(name, **inputs):
+            try:
+                resp = api.post(f"{origin}/wp-json/wp-abilities/v1/abilities/{name}/run", json={"input": inputs}, timeout=300)
+            except requests.RequestException as exc:
+                raise FixError(f"Could not reach the site: {exc.__class__.__name__}") from exc
+            try:
+                data = resp.json()
+            except ValueError:
+                data = None
+            if resp.status_code == 404:
+                raise FixError("This site can't be updated with the application password: it needs the Hostinger AI "
+                               "Assistant plugin active (it provides the update command).")
+            if not resp.ok:
+                msg = data.get("message") if isinstance(data, dict) else None
+                raise FixError(re.sub(r"<[^>]+>", "", str(msg or f"WordPress answered HTTP {resp.status_code}"))[:300])
+            return data if isinstance(data, dict) else {}
+
+        if action == "update_theme":
+            ability("hostinger-ai/theme-update", stylesheet=item)
+            self.start_scan(slug)
+            return f"Updated the {item} theme"
+
+        def remove(p):  # a plugin must be inactive before WordPress lets it be deleted
+            if p.get("status") != "inactive":
+                call("PUT", f"/plugins/{p['plugin']}", status="inactive")
+            call("DELETE", f"/plugins/{p['plugin']}")
+
+        try:
+            plugins = api.get(f"{origin}/wp-json/wp/v2/plugins", timeout=60).json()
+        except (requests.RequestException, ValueError) as exc:
+            raise FixError("Could not list the site's plugins") from exc
+        if not isinstance(plugins, list):
+            raise FixError("WordPress refused to list plugins: the application password must belong to an administrator.")
+        name = lambda p: p.get("name") if isinstance(p.get("name"), str) else p["plugin"].split("/")[0]
+        if action == "update_plugin":
+            match = next((p for p in plugins if p["plugin"].split("/")[0] == item), None)
+            if match is None:
+                raise FixError(f"{item} is not installed")
+            ability("hostinger-ai/plugin-update", plugin_file=match["plugin"] + ".php")
+            after = next((p for p in (api.get(f"{origin}/wp-json/wp/v2/plugins", timeout=60).json() or [])
+                          if p.get("plugin") == match["plugin"]), {})
+            if after.get("version") == match.get("version"):
+                raise FixError(f"WordPress didn't update {name(match)}: it is still {match.get('version')}.")
+            message = f"Updated {name(match)} from {match.get('version')} to {after.get('version') or 'the latest version'}"
+        elif action == "remove_plugin":
+            match = next((p for p in plugins if p["plugin"].split("/")[0] == item), None)
+            if match is None:
+                message = f"{item} is already gone"
+            else:
+                remove(match)
+                message = f"Removed {name(match)}"
+        else:
+            inactive = [p for p in plugins if p.get("status") == "inactive"]
+            for p in inactive:
+                remove(p)
+            message = f"Deleted {len(inactive)} inactive plugin(s)" + (f": {', '.join(map(name, inactive))}" if inactive else "")
+        self.start_scan(slug)  # confirm the change; harmless if a scan is already running
+        return message
 
     # ---- scans ------------------------------------------------------------
     def start_scan(self, slug=None, scheduled=False):
@@ -371,6 +512,16 @@ class DashboardServer:
                     if path == "/api/sites/delete":
                         server.remove_site(body.get("slug"))
                         return self._json(200, {"ok": True})
+                    if path == "/api/ignore":
+                        ignored = server.set_ignored(body.get("site"), body.get("title"), body.get("check"), body.get("severity"),
+                                                     body.get("key"), body.get("ignore", True) is not False)
+                        return self._json(200, {"ok": True, "ignored": ignored})
+                    if path == "/api/wp-fix":
+                        try:
+                            message = server.fix_wordpress(body.get("site"), body.get("action"), body.get("item"))
+                        except FixError as exc:
+                            return self._json(502, {"ok": False, "message": str(exc)})
+                        return self._json(200, {"ok": True, "message": message})
                     if path == "/api/teams":
                         save_webhook(server.config, body.get("webhook_url"))
                         return self._json(200, {"ok": True, "teams": webhook_status(server.config)})

@@ -11,7 +11,7 @@
   --text: #0f1b2d; --text-2: #4a5568; --muted: #7a8599; --accent: #1f6fe5; --accent-hover: #1a5fc4; --accent-soft: #eef4fe;
   --side-bg: #0f1d3a; --side-border: #1e2d4f; --side-text: #b7c3d9; --side-strong: #ffffff;
   --side-hover: #1a2a4d; --side-active-bg: #1f6fe5; --side-active-text: #ffffff; --side-card: #172747;
-  --sev-critical: #d03b3b; --sev-high: #ec835a; --sev-medium: #fab219; --sev-low: #6da7ec; --sev-info: #b5b4ad;
+  --sev-critical: #d03b3b; --sev-high: #d03b3b; --sev-medium: #fab219; --sev-low: #6da7ec; --sev-info: #b5b4ad;
   --good: #0ca30c; --warn: #fab219; --bad: #d03b3b; --na: #b8bfcc;
   --good-soft: #e7f6e7; --warn-soft: #fff4dc; --bad-soft: #fbe7e7; --info-soft: #e8f1fd; --orange-soft: #fde9dc;
   /* one fixed color per check category (validated categorical palette, fixed order) */
@@ -38,16 +38,10 @@ a:hover { text-decoration: underline; }
 .hidden { display: none !important; }
 
 /* ---------- shell ---------- */
-.app { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 100vh; }
-.side { background: var(--side-bg); border-right: 1px solid var(--side-border); color: var(--side-text); padding: 18px 12px; display: flex; flex-direction: column; gap: 4px; position: sticky; top: 0; height: 100vh; }
-.side .logo { display: flex; gap: 10px; align-items: center; color: var(--side-strong); font-weight: 650; padding: 4px 10px 18px; font-size: 15px; }
-.nav a { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; color: var(--side-text); font-weight: 500; text-decoration: none; }
-.nav a:hover { background: var(--side-hover); color: var(--side-strong); }
-.nav a[aria-current="page"] { background: var(--side-active-bg); color: var(--side-active-text); font-weight: 600; }
-.nav .badge { margin-left: auto; background: var(--bad); color: #fff; border-radius: 999px; font-size: 11px; padding: 0 7px; line-height: 18px; font-weight: 600; }
-.side .foot { margin-top: auto; padding: 12px 10px 4px; border-top: 1px solid var(--side-border); font-size: 12px; }
-.side .foot b { color: var(--side-strong); display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
-.content { min-width: 0; padding: 20px 28px 40px; }
+.content { min-width: 0; max-width: 1600px; margin: 0 auto; padding: 20px 28px 40px; }
+.top .title { color: inherit; text-decoration: none; }
+.top .title:hover { text-decoration: none; }
+.icon-btn[aria-current="page"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 .top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
 .top .title { display: flex; gap: 14px; align-items: center; margin-right: auto; }
@@ -56,7 +50,7 @@ a:hover { text-decoration: underline; }
 .top .subtitle { color: var(--text-2); font-size: 13px; margin-top: 2px; }
 .lastscan { display: flex; gap: 10px; align-items: center; color: var(--text-2); font-size: 12px; }
 .lastscan b { display: block; color: var(--text); font-size: 13px; font-weight: 600; }
-.btn { border: 1px solid var(--border); background: var(--surface); border-radius: 9px; padding: 7px 14px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; font-weight: 500; white-space: nowrap; }
+.btn { border: 1px solid var(--border); background: var(--surface); border-radius: 9px; padding: 7px 14px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; font-weight: 500; white-space: nowrap; text-decoration: none; color: inherit; }
 .btn:hover { background: var(--surface-2); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .btn.primary:hover { background: var(--accent-hover); }
@@ -114,6 +108,7 @@ a:hover { text-decoration: underline; }
 .alerts .tm { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .alerts li > div { min-width: 0; }
 .alerts .tm .pill, .muted .pill { color: var(--text); }
+.alerts .tm .pill.red, .muted .pill.red { color: var(--bad); }
 .alerts .alert-sub { counter-reset: pl; list-style: none; margin: 6px 0 2px; padding: 0; display: grid; gap: 4px; }
 .alerts .alert-sub li { counter-increment: pl; display: flex; gap: 8px; align-items: center; justify-content: space-between;
   border: 0; padding: 2px 0; cursor: default; font-size: 12.5px; color: var(--text-2); white-space: normal; }
@@ -149,6 +144,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabula
 .status.safe { background: var(--good-soft); } .status.warn { background: var(--warn-soft); } .status.risk { background: var(--bad-soft); } .status.none { background: var(--surface-2); color: var(--text-2); }
 .status .dot, .pill .dot, .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
 .pill { display: inline-flex; gap: 6px; align-items: center; border-radius: 999px; padding: 2px 9px 2px 7px; font-size: 12px; font-weight: 600; background: var(--surface-2); white-space: nowrap; }
+.pill.red { background: var(--bad-soft); color: var(--bad); }
 .ci { display: inline-grid; place-items: center; }
 
 /* ---------- benefits ---------- */
@@ -217,7 +213,7 @@ dialog::backdrop { background: rgba(10,20,40,.45); }
 .modal-b { padding: 16px 20px; display: grid; gap: 14px; }
 .modal-f { padding: 0 20px 18px; display: flex; gap: 8px; justify-content: flex-end; }
 .field label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 5px; }
-.field input[type=text], .field input[type=url] { width: 100%; border: 1px solid var(--border); background: var(--surface); border-radius: 9px; padding: 9px 12px; }
+.field input[type=text], .field input[type=url], .field input[type=password] { width: 100%; border: 1px solid var(--border); background: var(--surface); border-radius: 9px; padding: 9px 12px; }
 .field input:focus, .search input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .field .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
 .form-err { color: var(--bad); font-size: 13px; }
@@ -229,8 +225,6 @@ dialog::backdrop { background: rgba(10,20,40,.45); }
 .tooltip .tt-r span { display: inline-flex; align-items: center; gap: 6px; }
 
 /* ---------- overview dashboard ---------- */
-.sched { margin-top: auto; background: var(--side-card); border-radius: 12px; padding: 12px; display: flex; gap: 10px; font-size: 12px; line-height: 1.5; }
-.sched b { color: var(--side-strong); display: block; font-size: 13px; }
 .kpi6 { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; }
 .kc { padding: 14px; display: flex; flex-direction: column; gap: 12px; color: inherit; }
 a.kc:hover { border-color: var(--accent); text-decoration: none; }
@@ -271,16 +265,9 @@ a.kc:hover { border-color: var(--accent); text-decoration: none; }
   .benefits .b + .b { border-left: 0; padding-left: 0; }
 }
 @media (max-width: 900px) {
-  .app { grid-template-columns: 1fr; }
-  .side { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--side-border); flex-direction: row; align-items: center; overflow-x: auto; padding: 10px 12px; gap: 2px; }
-  .side .logo { padding: 0 10px 0 4px; }
-  .side .logo span, .side .foot { display: none; }
-  .nav { display: flex; gap: 2px; }
-  .nav a { padding: 8px 10px; white-space: nowrap; }
   .content { padding: 16px; }
   .stats, .modules, .facts, .kpi6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .row3, .row2, .chk-cards { grid-template-columns: 1fr; }
-  .side .sched { display: none; }
   .search input { width: 100%; }
 }
 @media (max-width: 560px) {
@@ -295,38 +282,17 @@ a.kc:hover { border-color: var(--accent); text-decoration: none; }
 </head>
 <body>
 <div class="app">
-  <aside class="side">
-    <div class="logo">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="#1f6fe5" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><rect x="9" y="10.5" width="6" height="5" rx="1" fill="#fff"/><path d="M10.2 10.5V9a1.8 1.8 0 0 1 3.6 0v1.5" stroke="#fff" stroke-width="1.4" fill="none"/></svg>
-      <span>Security<br>Monitoring</span>
-    </div>
-    <nav class="nav" id="nav"></nav>
-    <div class="sched" id="sched"></div>
-  </aside>
-
   <div class="content">
     <header class="top">
-      <div class="title">
+      <a class="title" href="#/links" title="Websites">
         <div class="shield"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
         <div>
           <h1>Security Monitoring Agent</h1>
           <div class="subtitle">Monitor the security of your websites in one place.</div>
         </div>
-      </div>
-      <div class="lastscan">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
-        <div>Last Scan<b id="lastScan">—</b></div>
-      </div>
-      <button class="btn icon-btn" id="reloadBtn" type="button" aria-label="Refresh data" title="Refresh data">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/></svg>
-      </button>
-      <button class="btn icon-btn" id="themeBtn" type="button" aria-label="Toggle light/dark theme" title="Toggle theme">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
-      </button>
-      <button class="btn" id="addBtn" type="button">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
-        Add Website
-      </button>    </header>
+      </a>
+      <a class="btn icon-btn" id="settingsBtn" href="#/settings" aria-label="Settings" title="Settings"></a>
+    </header>
     <div id="banner"></div>
     <main id="view"></main>
   </div>
@@ -341,6 +307,7 @@ a.kc:hover { border-color: var(--accent); text-decoration: none; }
     <div class="modal-b" id="addBody">
       <div class="field"><label for="fUrl">Website link</label><input id="fUrl" type="text" placeholder="https://example.com" autocomplete="off" required>
         <div class="hint">Any website. Only add sites you own or are authorized to test.</div></div>
+      <div class="field"><label for="fName">Website name <span class="muted">(optional)</span></label><input id="fName" type="text" placeholder="e.g. Kleza" maxlength="60" autocomplete="off"></div>
       <div class="field"><label for="fWpUser">Website username <span class="muted">(optional)</span></label><input id="fWpUser" type="text" placeholder="admin username" autocomplete="off"></div>
       <div class="field"><label for="fWpPass">Website application password <span class="muted">(optional)</span></label><input id="fWpPass" type="password" placeholder="abcd efgh ijkl mnop qrst uvwx" autocomplete="new-password">
         <div class="hint">Optional login for a deeper scan of the site (for WordPress: plugins, themes, users and the inside malware scan). For WordPress, create it in wp-admin under Users &rsaquo; Profile &rsaquo; Application Passwords. Stored in a local <code>secrets/</code> file, never in reports.</div></div>
@@ -458,6 +425,15 @@ const store = {
 };
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 // Decode HTML entities that arrive already-encoded from WordPress (e.g. plugin names with "&amp;"), so esc() doesn't double-encode them.
+// Short site name: the name typed in Add Website if any; otherwise the brand part of the page title ("BMR Law Offices | Your Partner..." -> "BMR Law Offices"),
+// or, when the title has no separator, the domain without its ending ("kleza.io" -> "Kleza").
+const siteName = s => {
+  if (s.name && s.name !== new URL(s.url).hostname) return s.name;
+  const parts = dec(s.title).split(/\s+[|–—:-]\s+/);
+  if (parts.length > 1 && parts[0].trim()) return parts[0].trim();
+  const label = (new URL(s.url).hostname.replace(/^www\./, "").split(".")[0]) || s.name;
+  return label.charAt(0).toUpperCase() + label.slice(1);
+};
 const dec = s => String(s ?? "").replace(/&(amp|lt|gt|quot|#0?39|apos);/g, m => ({ "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&#039;": "'", "&apos;": "'" }[m] || m));
 const fmtDate = iso => { const d = new Date(iso); return isNaN(d) ? "—" : d.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }); };
 const fmtShortDT = iso => { const d = new Date(iso); return isNaN(d) ? "—" : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); };
@@ -470,7 +446,7 @@ const ago = iso => {
 const stamp = iso => { const d = new Date(iso), p = n => String(n).padStart(2, "0");
   return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}-${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}`; };
 const fileUrl = rel => (DATA.server ? "/files/" : "") + rel.split("/").map(encodeURIComponent).join("/");
-const pill = sev => `<span class="pill"><span class="dot" style="background:${sevColor(sev)}"></span>${esc(sev)}</span>`;
+const pill = sev => `<span class="pill${sev === "HIGH" || sev === "CRITICAL" ? " red" : ""}"><span class="dot" style="background:${sevColor(sev)}"></span>${esc(sev)}</span>`;
 const statusTag = st => `<span class="status ${STATE[st].cls}"><span class="dot" style="background:${STATE[st].color}"></span>${STATE[st].label}</span>`;
 const checkIcon = st => ({
   pass: `<span class="ci" style="color:var(--good)" title="Pass">${I(P.check, 18)}</span>`,
@@ -494,7 +470,7 @@ function siteInfo(site) {
 
 /* ================= state & routing ================= */
 const ui = { sev: new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]), check: "all", q: "", sort: { key: "severity", dir: -1 },
-             open: new Set(), showHistory: false, linkQ: "", ovQ: "", ovRisk: "", ovIssue: "", ovPage: 0, alertSev: new Set(["CRITICAL", "HIGH"]), alertSite: "all", alertQ: "", alertOpen: new Set() };
+             open: new Set(), showHistory: false, linkQ: "", ovQ: "", ovRisk: "", ovIssue: "", ovPage: 0, alertOpen: new Set(), updated: new Set() };
 const route = () => { const [page = "links", arg, sub] = location.hash.replace(/^#\/?/, "").split("/"); return { page: page === "dashboard" ? "links" : (page || "links"), arg: arg ? decodeURIComponent(arg) : null, sub: sub ? decodeURIComponent(sub) : null }; };
 const go = h => { if (location.hash === h) render(); else location.hash = h; };
 addEventListener("hashchange", () => { ui.open.clear(); render(); scrollTo({ top: 0 }); });
@@ -503,7 +479,6 @@ addEventListener("hashchange", () => { ui.open.clear(); render(); scrollTo({ top
 const applyTheme = t => { if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); else document.documentElement.removeAttribute("data-theme"); };
 applyTheme(store.get("theme"));
 const isDark = () => document.documentElement.getAttribute("data-theme") === "dark";
-document.getElementById("themeBtn").onclick = () => { const t = isDark() ? "light" : "dark"; applyTheme(t); store.set("theme", t); render(); };
 
 /* ================= tooltip ================= */
 const tt = document.getElementById("tt");
@@ -558,10 +533,10 @@ function linksTable(sites, opts = {}) {
   if (!sites.length) return `<div class="empty"><h3>No websites yet</h3>Click <b>Add Website</b> to start monitoring a website.</div>`;
   const cols = opts.full ? CHECKS : CHECKS.filter(c => ["ssl", "malware", "exposed_files", "headers", "vulnerabilities"].includes(c[0]));
   return `<div class="tbl-wrap"><table class="tbl">
-    <thead><tr><th>#</th><th>Website Link</th><th>Status</th>${cols.map(c => `<th class="c">${esc(c[2])}</th>`).join("")}<th>Last Scan</th><th>Actions</th></tr></thead>
+    <thead><tr><th>#</th><th>Website</th><th>Status</th>${cols.map(c => `<th class="c">${esc(c[2])}</th>`).join("")}<th>Last Scan</th><th>Actions</th></tr></thead>
     <tbody>${sites.map((s, i) => { const inf = siteInfo(s); return `<tr>
       <td class="muted">${i + 1}</td>
-      <td><a class="site-link" href="#/links/${encodeURIComponent(s.slug)}">${esc(s.url)}</a>${s.name !== new URL(s.url).hostname ? `<div class="muted">${esc(s.name)}</div>` : ""}</td>
+      <td><a class="site-link" href="#/links/${encodeURIComponent(s.slug)}" title="${esc(s.url)}">${esc(siteName(s))}</a></td>
       <td>${statusTag(inf.state)}</td>
       ${cols.map(c => `<td class="c">${checkIcon(inf.checks[c[0]])}</td>`).join("")}
       <td class="muted" style="white-space:nowrap">${s.latest ? esc(fmtShortDT(s.latest.started_at)) : "Never"}</td>
@@ -712,6 +687,18 @@ function pageCheckDetail(v, site, check) {
   const status = !ran ? '<span class="pill"><span class="dot" style="background:var(--na)"></span>NOT RUN</span>'
     : issues.length ? pill(worst) : '<span class="pill"><span class="dot" style="background:var(--good)"></span>PASS</span>';
   const col = CAT_COLOR[catOf(k)];
+  const shown = fs.filter(f => !isHidden(site, f));  // ignored findings are already removed by the server
+  const findingCard = f => `
+      <div class="card"><div style="display:flex;gap:10px;align-items:baseline;margin-bottom:6px">${pill(f.severity)}<b style="font-size:15px">${esc(f.title)}</b>
+        ${DATA.server && wpFix(f) ? `<button type="button" class="btn sm primary" style="margin-left:auto" data-update="${esc(cardKey(f))}"
+          title="${esc(wpFix(f).label)}">${I(wpFix(f).button === "Update" ? P.refresh : P.trash, 14)} ${esc(wpFix(f).button)}</button>` : ""}
+        ${DATA.server ? `<button type="button" class="btn sm" style="${wpFix(f) ? "" : "margin-left:auto"}" data-ignore="${esc(cardKey(f))}"
+          title="Hide this issue for good (you can restore it in Settings)">Ignore</button>` : ""}</div>
+        <div data-update-msg="${esc(cardKey(f))}"></div>
+        ${f.detail ? `<p style="margin:0 0 10px;overflow-wrap:anywhere">${esc(f.detail)}</p>` : ""}
+        ${f.recommendation ? `<div class="section-title" style="margin:6px 0 4px">Recommendation</div><p style="margin:0 0 8px">${esc(f.recommendation)}</p>` : ""}
+        ${f.evidence && Object.keys(f.evidence).length ? `<div class="section-title" style="margin:6px 0 4px">Evidence</div><pre>${esc(JSON.stringify(f.evidence, null, 2))}</pre>` : ""}
+      </div>`;
   v.innerHTML = `<a class="back" href="#/links/${encodeURIComponent(site.slug)}">${I(P.back, 16)} ${esc(site.name)}</a>
     <div class="card"><div class="site-head">
       <span class="ico" style="width:46px;height:46px;border-radius:12px;background:${tint(col)};color:${col};display:grid;place-items:center;flex:none">${I(ico, 24)}</span>
@@ -720,40 +707,82 @@ function pageCheckDetail(v, site, check) {
       <div class="actions">${status}</div>
     </div></div>
     <div class="filters mt" aria-label="Other checks">${CHECKS.map(([kk, ll]) => `<a class="chip" href="#/links/${encodeURIComponent(site.slug)}/${kk}"${kk === k ? ' style="border-color:var(--accent);color:var(--accent);font-weight:600"' : ""}>${esc(ll)}</a>`).join("")}</div>
-    ${fs.length ? `<div class="grid mt" style="gap:12px">${fs.map(f => `
-      <div class="card"><div style="display:flex;gap:10px;align-items:baseline;margin-bottom:6px">${pill(f.severity)}<b style="font-size:15px">${esc(f.title)}</b></div>
-        ${f.detail ? `<p style="margin:0 0 10px;overflow-wrap:anywhere">${esc(f.detail)}</p>` : ""}
-        ${f.recommendation ? `<div class="section-title" style="margin:6px 0 4px">Recommendation</div><p style="margin:0 0 8px">${esc(f.recommendation)}</p>` : ""}
-        ${f.evidence && Object.keys(f.evidence).length ? `<div class="section-title" style="margin:6px 0 4px">Evidence</div><pre>${esc(JSON.stringify(f.evidence, null, 2))}</pre>` : ""}
-      </div>`).join("")}</div>`
-    : `<div class="card empty mt"><h3>${ran ? "No issues found" : "Not run in the latest scan"}</h3>${ran ? "This check passed with nothing to report." : "This check was not part of the latest scan."}</div>`}`;
+    ${shown.length ? `<div class="grid mt" style="gap:12px">${shown.map(findingCard).join("")}</div>`
+      : `<div class="card empty mt"><h3>${ran ? "No issues found" : "Not run in the latest scan"}</h3>${ran ? "This check passed with nothing to report." : "This check was not part of the latest scan."}</div>`}`;
+  // Remove / Delete: the server makes the change through the site's REST API with the saved application password;
+  // on success the card goes away and the rescan it starts confirms it
+  const runUpdate = async b => {
+    const f = fs.find(x => cardKey(x) === b.dataset.update), page = f && wpFix(f);
+    if (!page) return;
+    const what = page.action === "delete_inactive_plugins" ? `Delete these inactive plugins from ${site.url}?
+
+${f.detail}` : `${page.label} from ${site.url}?`;
+    if (page.button !== "Update" && !confirm(`${what}
+
+This deletes the plugin files and can't be undone.`)) return;
+    const msg = [...v.querySelectorAll("[data-update-msg]")].find(m => m.dataset.updateMsg === b.dataset.update);
+    const label = b.innerHTML;
+    b.disabled = true; b.innerHTML = `<span class="spin"></span> ${esc(page.button)}…`; msg.innerHTML = "";
+    const res = await api("/api/wp-fix", { site: site.slug, action: page.action, item: page.item });
+    if (res.ok) {
+      ui.updated.add(`${site.slug}|${b.dataset.update}`);  // remove the card now
+      render(); await refresh(); pollWhileRunning();
+      return;
+    }
+    b.disabled = false; b.innerHTML = label;
+    const text = res.data.message || (res.status === 404 ? "The dashboard server is out of date: restart it and try again." : `Could not do it (HTTP ${res.status})`);
+    msg.style.cssText = "margin:0 0 10px;color:var(--bad)";
+    msg.textContent = text;
+  };
+  v.querySelectorAll("[data-update]").forEach(b => b.onclick = () => runUpdate(b));
+  v.querySelectorAll("[data-ignore]").forEach(b => b.onclick = async () => {
+    const f = fs.find(x => cardKey(x) === b.dataset.ignore);
+    if (!f) return;
+    b.disabled = true;
+    const res = await api("/api/ignore", { site: site.slug, title: f.title, check: f.check, severity: f.severity });
+    if (!res.ok) { b.disabled = false; alert(res.data.message || "Could not save"); return; }
+    ui.updated.add(`${site.slug}|${b.dataset.ignore}`);  // hide it now; the server leaves it out of the data from here on
+    render(); refresh();
+  });
 }
 
-function pageReports(v) {
-  const scanned = DATA.sites.filter(s => s.latest);
-  const all = DATA.sites.flatMap(s => (s.history || []).map(h => ({ ...h, site: s }))).sort((a, b) => new Date(b.started_at) - new Date(a.started_at));
-  const stTag = st => { const k = { "SECURE": "safe", "GOOD": "safe", "NEEDS ATTENTION": "warn", "AT RISK": "risk", "CRITICAL": "risk" }[st] || "none";
-    return `<span class="status ${k}"><span class="dot" style="background:${STATE[k].color}"></span>${esc(st)}</span>`; };
-  v.innerHTML = `
-    <div class="card"><div class="card-h"><span style="color:var(--accent)">${I(P.report, 20)}</span><h2>Latest reports</h2></div>
-      ${scanned.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Website</th><th>Status</th><th class="num">Risk score</th><th class="num">Critical</th><th class="num">High</th><th class="num">Medium</th><th class="num">Low</th><th>Scanned</th><th>Download</th></tr></thead>
-        <tbody>${scanned.map(s => { const r = s.latest, c = r.severity_counts; return `<tr class="link" data-slug="${esc(s.slug)}">
-          <td><span class="site-link">${esc(s.url)}</span></td><td>${stTag(r.security_status)}</td><td class="num"><b>${r.risk_score}</b></td>
-          <td class="num">${c.CRITICAL}</td><td class="num">${c.HIGH}</td><td class="num">${c.MEDIUM}</td><td class="num">${c.LOW}</td>
-          <td class="muted">${esc(fmtShortDT(r.started_at))}</td>
-          <td style="white-space:nowrap"><a class="btn sm" href="${fileUrl(s.slug + "/latest.md")}" target="_blank">.md</a> <a class="btn sm" href="${fileUrl(s.slug + "/latest.json")}" target="_blank">.json</a> <a class="btn sm" href="${fileUrl(s.slug + "/latest.xlsx")}" download="security-report-${esc(s.slug)}.xlsx">Excel</a></td></tr>`; }).join("")}</tbody></table></div>`
-        : '<div class="empty"><h3>No reports yet</h3>Reports appear here after the first scan.</div>'}
-    </div>
-    <div class="card mt"><div class="card-h"><h2>Scan history</h2><div class="right muted">${all.length} scan${all.length === 1 ? "" : "s"}</div></div>
-      ${all.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Scan time</th><th>Website</th><th>Status</th><th class="num">Risk score</th><th class="num">Critical</th><th class="num">High</th><th class="num">Medium</th><th class="num">Low</th><th>Report</th></tr></thead>
-        <tbody>${all.slice(0, 200).map(h => { const c = h.severity_counts || {}; return `<tr><td class="muted" style="white-space:nowrap">${esc(fmtDate(h.started_at))}</td>
-          <td><a class="site-link" href="#/links/${encodeURIComponent(h.site.slug)}">${esc(h.site.url)}</a></td><td>${stTag(h.security_status)}</td>
-          <td class="num">${h.risk_score}</td><td class="num">${c.CRITICAL || 0}</td><td class="num">${c.HIGH || 0}</td><td class="num">${c.MEDIUM || 0}</td><td class="num">${c.LOW || 0}</td>
-          <td><a href="${fileUrl(h.site.slug + "/" + stamp(h.started_at) + "/report.md")}" target="_blank">View</a></td></tr>`; }).join("")}</tbody></table></div>`
-        : '<div class="empty-chart">No scans yet</div>'}
-    </div>`;
-  v.querySelectorAll("tr.link").forEach(tr => tr.onclick = e => { if (!e.target.closest("a")) go("#/links/" + encodeURIComponent(tr.dataset.slug)); });
+// A card that was just ignored is hidden right away, before the refreshed data arrives
+const cardKey = f => `${f.check}|${f.title}`;
+const isHidden = (s, f) => ui.updated.has(`${s.slug}|${cardKey(f)}`);
+
+// Settings card listing ignored issues, each with Restore
+function ignoredCard() {
+  const rows = Object.entries(DATA.ignored || {}).flatMap(([slug, entries]) => {
+    const s = DATA.sites.find(x => x.slug === slug);
+    return Object.entries(entries).map(([key, e]) => ({ slug, key, e, name: s ? siteName(s) : slug }));
+  });
+  return `<div class="card mt"><div class="card-h"><h2>Ignored issues${rows.length ? ` (${rows.length})` : ""}</h2>
+      <div class="right muted">Hidden from the dashboard, alerts and Teams</div></div>
+    ${rows.length ? `<table class="tbl"><tbody>${rows.map(r => `<tr><td>${r.e.severity ? pill(r.e.severity) : ""}</td>
+        <td style="width:100%"><b>${esc(r.e.title)}</b><div class="muted">${esc(r.name)}${r.e.check ? ` · ${esc(CHECK_LABEL[r.e.check] || r.e.check)}` : ""}</div></td>
+        <td>${DATA.server ? `<button type="button" class="btn sm" data-restore="${esc(r.key)}" data-site="${esc(r.slug)}">Restore</button>` : ""}</td></tr>`).join("")}</tbody></table>`
+      : '<div class="muted">Nothing is ignored. Use Ignore on an issue to hide it for good.</div>'}</div>`;
 }
+function bindIgnored(v) {
+  v.querySelectorAll("[data-restore]").forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    const res = await api("/api/ignore", { site: b.dataset.site, key: b.dataset.restore, ignore: false });
+    if (!res.ok) { b.disabled = false; alert(res.data.message || "Could not save"); return; }
+    await refresh();
+  });
+}
+// WordPress issues the site's saved application password can fix through the WordPress REST API: the card gets a
+// Update/Remove/Delete button that makes the change (updates go through the Hostinger AI Assistant plugin's update
+// abilities). Everything else (inactive themes, settings) gets no button, since the REST API can't do it. Returns { label, button, action, item? } or null.
+const wpFix = f => {
+  const e = f.evidence || {}, t = f.title || "";
+  if (e.theme && e.latest) return { label: `Update the ${e.theme} theme to ${e.latest}`, button: "Update", action: "update_theme", item: e.theme };
+  if (e.plugin && (e.latest || e.fixed_in)) return { label: `Update to ${e.latest || e.fixed_in}`, button: "Update", action: "update_plugin", item: e.plugin };
+  if (e.plugin && !e.latest && !e.fixed_in && /^Plugin removed from wordpress\.org|^(Vulnerable|Possibly abandoned) plugin/i.test(t))
+    return { label: `Remove ${pluginName(t).replace(/\s+[\d.]+$/, "")}`, button: "Remove", action: "remove_plugin", item: e.plugin };
+  if (/inactive plugin\(s\) installed/i.test(t)) return { label: "Delete inactive plugins", button: "Delete", action: "delete_inactive_plugins" };
+  return null;
+};
 
 // Collapse several plugin issues on the same site into one ordered "these plugins need attention" alert,
 // instead of a separate row per plugin. A single plugin issue stays a normal row.
@@ -782,37 +811,24 @@ function alertRowsHtml(rows) {
       return `<li class="grouped${open ? " open" : ""}" data-toggle="1" data-slug="${esc(slug)}" role="button" tabindex="0"
         aria-expanded="${open}" title="${open ? "Hide" : "Show"} the ${e.sorted.length} plugins">${alertIcon(sn)}
         <div><div class="t">${e.sorted.length} plugins need attention — please check ${pill(sn)}</div>
-        <div class="u">${esc(e.group.s.url)} · Vulnerabilities</div>
+        <div class="u" title="${esc(e.group.s.url)}">${esc(siteName(e.group.s))} · Vulnerabilities</div>
         <ol class="alert-sub">${e.sorted.map(f => `<li><span class="nm" title="${esc(dec(f.title))}">${esc(dec(pluginName(f.title)))}</span>${pill(f.severity)}</li>`).join("")}</ol></div>
         <div class="tm"><span class="caret">${I(P.chev, 16)}</span></div></li>`;
     }
     return `<li data-slug="${esc(e.s.slug)}" data-title="${esc(e.f.title)}">${alertIcon(e.f.severity)}
-      <div><div class="t">${esc(e.f.title)}</div><div class="u">${esc(e.s.url)} · ${esc(CHECK_LABEL[e.f.check] || e.f.check)}</div></div>
+      <div><div class="t">${esc(e.f.title)}</div><div class="u" title="${esc(e.s.url)}">${esc(siteName(e.s))} · ${esc(CHECK_LABEL[e.f.check] || e.f.check)}</div></div>
       <div class="tm">${pill(e.f.severity)}</div></li>`;
   }).join("");
 }
-function pageAlerts(v) {
+// Alerts card on the Settings page: High/Critical issues from the latest scans.
+function alertsCard() {
   const all = [];
-  DATA.sites.forEach(s => (s.latest?.findings || []).forEach(f => { if (RANK[f.severity] >= 3) all.push({ f, s }); }));
-  const counts = Object.fromEntries(["CRITICAL", "HIGH"].map(k => [k, all.filter(a => a.f.severity === k).length]));
-  const q = ui.alertQ.trim().toLowerCase();
-  const rows = all.filter(({ f, s }) => ui.alertSev.has(f.severity) && (ui.alertSite === "all" || s.slug === ui.alertSite) &&
-    (!ui.alertCheck || f.check === ui.alertCheck) && (!q || (f.title + " " + f.detail + " " + s.url).toLowerCase().includes(q)))
-    .sort((a, b) => RANK[b.f.severity] - RANK[a.f.severity] || a.f.title.localeCompare(b.f.title));
-  v.innerHTML = `<div class="card">
-    <div class="card-h"><span style="color:var(--bad)">${I(P.bell, 20)}</span><h2>Alerts</h2><div class="right muted">High or Critical issues from the latest scans</div></div>
-    <div class="filters">
-      ${["CRITICAL", "HIGH"].map(s => `<button type="button" class="chip" data-chip="${s}" aria-pressed="${ui.alertSev.has(s)}"><span class="dot" style="background:${sevColor(s)}"></span>${s} <b>${counts[s]}</b></button>`).join("")}
-      <select id="aSite" aria-label="Filter by website"><option value="all">All websites</option>${DATA.sites.map(s => `<option value="${esc(s.slug)}" ${ui.alertSite === s.slug ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select>
-      <select id="aCheck" aria-label="Filter by check"><option value="">All checks</option>${CHECKS.map(c => `<option value="${c[0]}" ${ui.alertCheck === c[0] ? "selected" : ""}>${esc(c[1])}</option>`).join("")}</select>
-      <label class="search">${I(P.search, 15)}<input type="search" id="aSearch" placeholder="Search alerts..." value="${esc(ui.alertQ)}" aria-label="Search alerts"></label>
-    </div>
-    ${rows.length ? `<ul class="alerts">${alertRowsHtml(rows)}</ul>` : `<div class="empty"><h3>No alerts</h3>${all.length ? "Nothing matches the current filters." : "No high or critical issues in the latest scans."}</div>`}
-  </div>`;
-  v.querySelectorAll(".chip").forEach(ch => ch.onclick = () => { const s = ch.dataset.chip; ui.alertSev.has(s) ? ui.alertSev.delete(s) : ui.alertSev.add(s); render(); });
-  v.querySelector("#aSite").onchange = e => { ui.alertSite = e.target.value; render(); };
-  v.querySelector("#aCheck").onchange = e => { ui.alertCheck = e.target.value || null; render(); };
-  const as = v.querySelector("#aSearch"); as.oninput = () => { ui.alertQ = as.value; const pos = as.selectionStart; render(); const n = document.getElementById("aSearch"); n.focus(); n.setSelectionRange(pos, pos); };
+  DATA.sites.forEach(s => (s.latest?.findings || []).forEach(f => { if (RANK[f.severity] >= 3 && !isHidden(s, f)) all.push({ f, s }); }));
+  return `<div class="card"><div class="card-h"><span style="color:var(--bad)">${I(P.bell, 20)}</span><h2>Alerts${all.length ? ` (${all.length})` : ""}</h2>
+      <div class="right muted">High or Critical issues from the latest scans</div></div>
+    ${all.length ? `<ul class="alerts compact">${alertRowsHtml(all)}</ul>` : `<div class="empty"><h3>No alerts</h3>No high or critical issues in the latest scans.</div>`}</div>`;
+}
+function bindAlerts(v) {
   v.querySelectorAll(".alerts > li").forEach(li => {
     const act = () => {
       if (li.dataset.toggle) {
@@ -830,10 +846,13 @@ function pageAlerts(v) {
 }
 
 function pageSettings(v) {
+  const back = `<a class="back" href="#/links">${I(P.back, 16)} Websites</a>`;
   const st = DATA.settings || {}, theme = store.get("theme") === "dark" ? "dark" : "light";
   const admin = st.admin || {};
   const initials = (admin.name || admin.email || "A").trim().split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
-  v.innerHTML = `
+  const times = DATA.sites.map(s => s.latest?.started_at).filter(Boolean).sort(), last = times[times.length - 1];
+  const [schedLine, nextLine] = scheduleText(last);
+  v.innerHTML = `${back}
     <div class="card"><div class="card-h"><span style="color:var(--accent)">${I(P.users, 20)}</span><h2>Admin details</h2>
       <div class="right">${DATA.server && admin.enabled ? `<button class="btn sm" id="signOut">${I(P.back, 14)} Sign out</button>` : ""}</div></div>
       <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
@@ -848,6 +867,15 @@ function pageSettings(v) {
           : '<span class="status none">Login disabled</span> <span class="muted">set <code>auth.enabled: true</code> in config.yaml</span>'}</dd>
         <dt>Password</dt><dd><span class="muted">Set with <code>auth.password</code> in config.yaml. Change it from the default.</span></dd>
       </dl>
+    </div>
+    <div class="grid row2 mt">
+      <div class="card"><div class="card-h"><span style="color:var(--accent)">${I('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>', 20)}</span><h2>Scans</h2>
+        <div class="right"><button class="btn sm" id="reloadBtn" type="button">${I(P.refresh, 14)} Refresh data</button></div></div>
+        <dl class="kv">
+          <dt>Last scan</dt><dd>${last ? esc(fmtDate(last)) : "Not yet"}</dd>
+          <dt>Next scan</dt><dd>${esc((nextLine || "").replace(/^Next: /, "") || "—")} <div class="muted">${esc(schedLine)}</div></dd>
+        </dl></div>
+      ${alertsCard()}
     </div>
     <div class="grid row2 mt">
       <div class="card"><div class="card-h"><h2>Monitoring</h2></div><dl class="kv">
@@ -865,9 +893,13 @@ function pageSettings(v) {
       </div>
     </div>
     ${DATA.server && st.teams ? teamsCard(st) : ""}
+    ${ignoredCard()}
     <div class="card mt"><div class="card-h"><h2>Appearance</h2></div>
       <div class="seg" role="group" aria-label="Theme">${["light", "dark"].map(t => `<button type="button" data-theme-opt="${t}" aria-pressed="${theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
     </div>`;
+  v.querySelector("#reloadBtn").onclick = () => DATA.server ? refresh() : location.reload();
+  bindAlerts(v);
+  bindIgnored(v);
   v.querySelectorAll("[data-theme-opt]").forEach(b => b.onclick = () => { const t = b.dataset.themeOpt; store.set("theme", t); applyTheme(t); render(); });
   const so = v.querySelector("#signOut");
   if (so) so.onclick = async () => { await api("/api/logout"); location.href = "/login"; };
@@ -917,7 +949,6 @@ function bindTeams(v) {
 }
 
 /* ================= render ================= */
-const NAV = [["links", "Websites", P.globe], ["alerts", "Alerts", P.warn], ["reports", "Reports", P.report], ["settings", "Settings", P.gear]];
 // "09:00" -> "9:00 AM" in the viewer's locale
 const fmtClock = hhmm => { const [h, m] = String(hhmm).split(":").map(Number), d = new Date(); d.setHours(h, m, 0, 0);
   return isNaN(d) ? String(hhmm) : d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); };
@@ -930,18 +961,11 @@ function scheduleText(lastIso) {
   const next = st.schedule_active && lastIso ? new Date(+new Date(lastIso) + st.interval_minutes * 60e3) : null;
   return st.schedule_active ? [`Every ${st.interval_minutes} min`, `Next: ${next ? fmtShortDT(next.toISOString()) : "soon"}`] : ["Automatic scans off", ""];
 }
-function renderSchedule(lastIso) {
-  const [line1, line2] = scheduleText(lastIso);
-  document.getElementById("sched").innerHTML = `<span style="color:var(--side-strong)">${I('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>', 20)}</span>
-    <div><b>Schedule</b>${esc(line1)}${line2 ? `<br>${esc(line2)}` : ""}</div>`;
-}
 function render() {
   const { page, arg, sub } = route();
-  const urgent = DATA.sites.reduce((a, s) => a + ((s.latest?.severity_counts?.CRITICAL || 0) + (s.latest?.severity_counts?.HIGH || 0)), 0);
-  document.getElementById("nav").innerHTML = NAV.map(([k, label, ico]) => `<a href="#/${k}" ${page === k ? 'aria-current="page"' : ""}>${I(ico)}<span>${label}</span>${k === "alerts" && urgent ? `<span class="badge">${urgent}</span>` : ""}</a>`).join("");
-  const times = DATA.sites.map(s => s.latest?.started_at).filter(Boolean).sort();
-  document.getElementById("lastScan").textContent = times.length ? fmtDate(times[times.length - 1]) : "Not yet";
-  renderSchedule(times[times.length - 1]);
+  const sb = document.getElementById("settingsBtn");
+  sb.innerHTML = I(P.gear, 16);
+  page === "settings" ? sb.setAttribute("aria-current", "page") : sb.removeAttribute("aria-current");
   hideTip();
   const v = document.getElementById("view");
   if (page === "links" && arg) {
@@ -949,7 +973,7 @@ function render() {
     if (!site) v.innerHTML = '<div class="card empty"><h3>Link not found</h3><a href="#/links">Back to all links</a></div>';
     else if (sub) pageCheckDetail(v, site, sub);
     else pageSite(v, site);
-  } else ({ links: pageLinks, reports: pageReports, alerts: pageAlerts, settings: pageSettings }[page] || pageLinks)(v);
+  } else ({ links: pageLinks, settings: pageSettings }[page] || pageLinks)(v);
   renderBanner();
 }
 
@@ -966,7 +990,7 @@ async function refresh() {
   try {
     const res = await fetch("/api/data", { cache: "no-store" });
     if (!res.ok) return;
-    const next = refileWordpress(await res.json()), sig = d => JSON.stringify([d.sites, d.scan_status]);
+    const next = refileWordpress(await res.json()), sig = d => JSON.stringify([d.sites, d.scan_status, d.ignored]);
     if (sig(next) === sig(DATA)) return;  // nothing changed: don't disturb the page
     DATA = next; render();
   } catch {}
@@ -1005,14 +1029,12 @@ function openAdd() {
   dlg.showModal();
   if (DATA.server) document.getElementById("fUrl").focus();
 }
-document.getElementById("addBtn").onclick = openAdd;
-document.getElementById("reloadBtn").onclick = () => DATA.server ? refresh() : location.reload();
 document.getElementById("addCancel").onclick = () => dlg.close();
 document.getElementById("addForm").addEventListener("submit", async e => {
   e.preventDefault();
   const btn = document.getElementById("addSubmit"), err = document.getElementById("formErr");
   btn.disabled = true; err.textContent = "";
-  const res = await api("/api/sites", { url: document.getElementById("fUrl").value, scan: document.getElementById("fScan").checked,
+  const res = await api("/api/sites", { url: document.getElementById("fUrl").value, name: document.getElementById("fName").value, scan: document.getElementById("fScan").checked,
     wp_username: document.getElementById("fWpUser").value, wp_password: document.getElementById("fWpPass").value });
   btn.disabled = false;
   if (!res.ok) { err.textContent = res.data.message || "Could not add this link"; return; }

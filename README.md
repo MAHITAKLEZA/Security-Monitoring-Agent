@@ -126,6 +126,8 @@ Pages (sidebar):
 
 **Add Link** (live mode) adds a website from the page and can scan it right away. Sites added this way are saved in `sites.json`, and `config.yaml` is never rewritten. Sites defined in `config.yaml` can only be removed there.
 
+WordPress issues can be fixed from their cards (Update, Remove, Delete); see [Fixing WordPress issues from the dashboard](#fixing-wordpress-issues-from-the-dashboard).
+
 The server listens only on `127.0.0.1`. Scan requests need a custom header and are checked by `Host`, so other websites you visit can't trigger scans.
 
 **Exit codes:** `0` means OK. `2` means the worst finding is at or above `report.fail_on` (default `HIGH`), which is useful in cron jobs or CI.
@@ -154,7 +156,30 @@ password=abcd efgh ijkl mnop qrst uvwx
 and a site address pointing to another domain. The results appear in the dashboard's Malware column as "Inside scan: …".
 Theme and plugin PHP files can't be read over the REST API, so a file-level scan needs SFTP/SSH or a server-side scanner.
 
-The password is sent only over HTTPS, only to the site's own REST API, and never written to reports or state files. Authenticated requests are read-only (GET only). Optionally set `WPSCAN_API_TOKEN` (free at wpscan.com) to report known plugin vulnerabilities.
+The password is sent only over HTTPS, only to the site's own REST API, and never written to reports or state files. Scans are read-only (GET only); the site is changed only when you click a fix button in the dashboard (below). Optionally set `WPSCAN_API_TOKEN` (free at wpscan.com) to report known plugin vulnerabilities.
+
+### Fixing WordPress issues from the dashboard
+In live mode (`--serve`), WordPress issue cards on a link's check page get a button that makes the change on the site with the
+saved application password. Nothing else is needed: no wp-admin login, no extra plugin, no SSH or FTP.
+
+| Issue | Button | What it does |
+|---|---|---|
+| Outdated plugin / outdated theme / vulnerable plugin with a fixed version | **Update** | Updates it to the latest version from wordpress.org, then checks that the version changed |
+| Plugin removed from wordpress.org, vulnerable plugin with no fix, possibly abandoned plugin | **Remove** | Deactivates and deletes the plugin (asks first) |
+| Inactive plugins installed | **Delete** | Deletes every inactive plugin (asks first, listing them) |
+
+On success the card disappears and the site is rescanned to confirm. On failure the card stays and shows WordPress's reason.
+Every card also has **Ignore**, which hides the issue for good (restore it under Settings).
+
+- **Update needs the Hostinger AI Assistant plugin active on the site.** The WordPress REST API has no update command, so
+  updates run through that plugin's `hostinger-ai/plugin-update` and `hostinger-ai/theme-update` abilities
+  (`/wp-json/wp-abilities/v1/`). On sites without it, Update shows an error saying so. Premium plugins that aren't on
+  wordpress.org (e.g. Monarch) can't be updated this way.
+- **Remove and Delete use the core REST API** (`/wp/v2/plugins`) and work on any WordPress site. Deleting a plugin runs its
+  uninstall routine, which usually removes its settings too.
+- The application password must belong to an **administrator**.
+- Issues with no button (WordPress core updates, inactive themes, XML-RPC, `readme.html`, security headers, SSL, DNS) need
+  server or file access, which the application password doesn't give.
 
 ### Change detection workflow
 The first run records a baseline. After that, every deviation is reported **on every run until you approve it** with `--accept-changes`, so a single report can't hide an injected script.
