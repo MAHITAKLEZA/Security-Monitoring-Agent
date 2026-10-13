@@ -1,7 +1,9 @@
 # Security Monitoring Agent: indexly.ai
 
-A command-line agent that scans **https://indexly.ai/** for security issues and writes detailed reports.
-It has **no dashboard and sends no alerts**. Each run writes JSON and Markdown reports to disk and prints a short console summary.
+An agent that scans **https://indexly.ai/** (and any other sites you add) for security issues and writes detailed reports.
+Each run writes JSON, Markdown and Excel reports to disk and prints a short console summary. With `--serve` it also runs a live
+dashboard, sends Microsoft Teams alerts (when a webhook is set), proposes fixes you can approve, and watches WordPress sites
+between scans for problems that come back (see [Spam & Compromise, fixes and autonomous defense](#spam--compromise-fixes-and-autonomous-defense)).
 
 ## What it checks
 
@@ -12,6 +14,7 @@ It has **no dashboard and sends no alerts**. Each run writes JSON and Markdown r
 | `exposed_files` | About 45 sensitive paths (`.env*`, `.git`, backups, SQL dumps, keys, phpinfo, `docker-compose.yml`, directory listings, `.next/BUILD_ID`) plus public JS source maps. Hits are confirmed by file content and compared against the soft-404 page to avoid false positives. |
 | `changes` | Baseline of each configured page: new third-party **script or iframe origins**, external form targets, title/meta changes, removed security headers, HTTP status, redirects, and visible-text similarity |
 | `malware` | Obfuscated `eval`/`document.write` payloads, crypto miners, card-skimmer patterns, web-shell signatures, hidden external iframes, SEO spam, and blacklist lookups (Spamhaus DBL, SURBL, optional Google Safe Browsing) for the site and its third-party script domains |
+| `compromise` | **Spam & Compromise**, run by the [jp_seo_agent](jp_seo_agent/README.md) engine. Crawls the site as a visitor and as Googlebot for SEO spam (Japanese keyword hack, pharma, gambling, adult, scam), cloaking, hidden spam links, malicious redirects, spam sitemaps and spam page generators. With an application password: spam posts and injected code in content, and the accounts behind them. With the Kleza Site Guard plugin: core and plugin file integrity, PHP in uploads, backdoors and cloaking code |
 | `vulnerabilities` | Outdated server software (for example `nginx/1.18.0`), vulnerable or end-of-life JS libraries, mixed content, forms that post over HTTP, dangerous HTTP methods, CORS origin reflection, verbose errors, `security.txt`, sensitive `robots.txt` entries |
 | `dns` | SPF, DMARC, CAA, DNSSEC, NS/MX/A record changes (hijack indicators), domain expiry and transfer lock via RDAP |
 | `third_party` | Inventory of third-party domains, missing Subresource Integrity, scripts from unapproved domains (optional allowlist), third-party domains that no longer resolve (takeover risk) |
@@ -93,7 +96,9 @@ These enable extra checks and are read from environment variables at runtime:
 
 | Variable | Enables |
 |---|---|
-| `KLEZA_WP_APP_PASSWORD` (or a per-site `app_password_file`) | Authenticated WordPress scan and inside malware scan |
+| `KLEZA_WP_APP_PASSWORD` (or a per-site `app_password_file`) | Authenticated WordPress scan, inside malware scan, WordPress part of Spam & Compromise, and fixes |
+| `TEAMS_WEBHOOK_URL` (or set it in the dashboard: Settings > Teams alerts) | Daily and urgent Microsoft Teams alert cards |
+| `ANTHROPIC_API_KEY` (plus `pip install anthropic`) | Optional Claude triage of borderline spam hits, only with `checks.compromise.ai: true` (off by default) |
 
 ## Usage
 
@@ -119,10 +124,10 @@ Every scan also regenerates `reports/dashboard.html`, a single self-contained fi
 
 Pages (sidebar):
 - **Dashboard**: cards for links monitored, safe links, links with warnings and high-risk links, a Security Checks Overview chart (passing, warning and failing per check), a Risk Distribution donut, Recent Alerts, the **Analysed Links** table with a pass/warn/fail icon per check (search, Scan All, View Report), and Key Benefits.
-- **Link Analysis**: every link with all nine checks. Click a link for its full report: risk score, change since the last scan, SSL and domain expiry, check cards, trend charts, a findings table you can filter and search (with evidence), and recommendations.
+- **Link Analysis**: every link with all of its checks. Click a link for its full report: risk score, change since the last scan, SSL and domain expiry, check cards, trend charts, a findings table you can filter and search (with evidence), and recommendations.
 - **Reports**: the latest report for each link (.md / .json downloads) and the full scan history, where each scan links to its archived report.
-- **Alerts**: every Medium or higher issue across all links, filterable by severity, link, check or text. (These are shown in the dashboard only. Nothing is sent anywhere.)
-- **Settings**: monitored websites (add or remove), scan interval, which checks are enabled, and the theme (system, light or dark).
+- **Alerts**: every Medium or higher issue across all links, filterable by severity, link, check or text.
+- **Settings**: monitored websites (add or remove), scan interval, which checks are enabled, Teams alerts (webhook), ignored issues, and the theme (system, light or dark).
 
 **Add Link** (live mode) adds a website from the page and can scan it right away. Sites added this way are saved in `sites.json`, and `config.yaml` is never rewritten. Sites defined in `config.yaml` can only be removed there.
 
@@ -160,7 +165,7 @@ password=abcd efgh ijkl mnop qrst uvwx
 and a site address pointing to another domain. The results appear in the dashboard's Malware column as "Inside scan: …".
 Theme and plugin PHP files can't be read over the REST API, so a file-level scan needs SFTP/SSH or a server-side scanner.
 
-The password is sent only over HTTPS, only to the site's own REST API, and never written to reports or state files. Scans are read-only (GET only); the site is changed only when you click a fix button in the dashboard (below). Optionally set `WPSCAN_API_TOKEN` (free at wpscan.com) to report known plugin vulnerabilities.
+The password is sent only over HTTPS, only to the site's own REST API, and never written to reports or state files. Scans are read-only (GET only); the site is changed only when you click a fix button or approve a proposed fix in the dashboard (below), or by automatic recovery if you turn it on for the site. Optionally set `WPSCAN_API_TOKEN` (free at wpscan.com) to report known plugin vulnerabilities.
 
 ### Fixing WordPress issues from the dashboard
 In live mode (`--serve`), WordPress issue cards on a link's check page get a button that makes the change on the site with the
@@ -182,8 +187,32 @@ Every card also has **Ignore**, which hides the issue for good (restore it under
 - **Remove and Delete use the core REST API** (`/wp/v2/plugins`) and work on any WordPress site. Deleting a plugin runs its
   uninstall routine, which usually removes its settings too.
 - The application password must belong to an **administrator**.
-- Issues with no button (WordPress core updates, inactive themes, XML-RPC, `readme.html`, security headers, SSL, DNS) need
-  server or file access, which the application password doesn't give.
+- Other issues (security headers, XML-RPC, `readme.html`, exposed files, core updates and more) can be fixed through the
+  **Remediation** proposals below when the Kleza Site Guard plugin is installed. Certificates, DNS records and server
+  configuration get "fix by hand" steps.
+
+## Spam & Compromise, fixes and autonomous defense
+The `compromise` check and the remediation features come from the [jp_seo_agent](jp_seo_agent/README.md) package in this
+repository, which works in three phases:
+
+1. **Detect.** The `compromise` check (see the table above). Scanning never changes the site.
+2. **Safe remediation.** Every problem any check finds becomes a proposed fix under **Remediation** on that check's page.
+   Nothing is applied until a person approves it. Before a change the agent saves a backup (in `backups/`, git-ignored),
+   then runs the check again to verify the fix, and every applied fix can be undone. Fixes include quarantining or
+   restoring infected files, trashing spam posts, demoting suspicious accounts, security hardening (headers, XML-RPC off,
+   usernames hidden, `security.txt`), blocking exposed files in `.htaccess`, plugin, theme and core updates, and revoking
+   unused application passwords. Anything the agent can't do itself becomes a "fix by hand" proposal with exact steps.
+3. **Autonomous defense** (with `--serve`). The integrity monitor checks WordPress files and applied fixes every
+   `watch_interval_minutes` (30), and the security monitor re-runs the other checks every `security_interval_minutes` (60).
+   A problem that comes back raises an event, an urgent Teams alert and a read-only root-cause investigation. If you
+   turn on **automatic recovery** for a site (off by default), fixes a person already approved are re-applied, up to
+   `max_auto_per_day` (10) per site and `max_auto_per_target` (3) per file, post or account in 7 days.
+
+Settings are under `checks.compromise` in [config.yaml](config.yaml). The file scan and most file fixes need the
+**Kleza Site Guard** plugin ([jp_seo_agent/wp-plugin/kleza-site-guard.zip](jp_seo_agent/wp-plugin/kleza-site-guard.zip)) and an administrator
+application password; see [Install the Site Guard plugin](jp_seo_agent/README.md#install-the-site-guard-plugin-file-scan-and-file-fixes).
+`jp_seo_agent` can also run on its own from the command line (`python -m jp_seo_agent scan|queue|approve|undo|watch|investigate ...`);
+see [its README](jp_seo_agent/README.md#command-line).
 
 ### Change detection workflow
 The first run records a baseline. After that, every deviation is reported **on every run until you approve it** with `--accept-changes`, so a single report can't hide an injected script.
@@ -208,7 +237,11 @@ reports/
     latest.json / latest.md          # most recent scan
     history.jsonl                    # one line per scan: status, risk score, counts
     20260923-101500/report.json|md   # every scan archived
+  site_guard/<host>/                 # jp_seo_agent command-line scans (scan-*.md/json, spam-urls-*.txt)
 state/indexly.json                   # baselines: certificate, DNS records, page snapshots
+state/remediation/<host>.json        # proposed, approved and applied fixes (approval queue)
+state/defense/<host>.json            # autonomous defense: file baseline, events, investigations
+backups/                             # copies of site content and files taken before each fix (git-ignored)
 ```
 
 Each report contains the **security status** (SECURE / GOOD / NEEDS ATTENTION / AT RISK / CRITICAL), a **risk score** (0–100), a **risk summary** by severity and by check, deduplicated **recommendations**, and **detailed findings** with evidence.
