@@ -13,7 +13,7 @@ SEVERITY_FILL = {
 }
 CHECK_LABELS = {
     "ssl": "SSL Monitoring", "headers": "Security Headers", "exposed_files": "Exposed Files",
-    "changes": "Suspicious Changes", "malware": "Malware Detection", "vulnerabilities": "Vulnerability Check",
+    "changes": "Suspicious Changes", "malware": "Malware Detection", "compromise": "Spam & Compromise", "vulnerabilities": "Vulnerability Check",
     "dns": "DNS & Domain", "third_party": "3rd Party Resources", "wordpress": "WordPress", "availability": "Availability", "agent": "Agent",
 }
 HEADER_FILL = PatternFill("solid", fgColor="1F4E79")

@@ -12,6 +12,8 @@ sites.json
 # Generated scan output and baselines
 reports/
 state/
+# Remediation backups (copies of changed site content and files)
+backups/
 
 # Python
 __pycache__/

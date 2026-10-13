@@ -401,13 +401,14 @@ const CHECKS = [
   ["ssl", "SSL Monitoring", "SSL", P.lock, "Certificate validity, expiry, TLS versions"],
   ["changes", "Suspicious Changes", "Changes", P.warn, "Unauthorized script, content or header changes"],
   ["malware", "Malware Detection", "Malware", P.bug, "Malicious code and blacklisting indicators"],
+  ["compromise", "Spam & Compromise", "Compromise", P.search, "SEO spam, hidden pages, malicious redirects, infected files"],
   ["exposed_files", "Exposed Files", "Exposed Files", P.report, ".env, backups, VCS, phpinfo, source maps"],
   ["headers", "Security Headers", "Security Headers", P.shield, "HSTS, CSP, X-Frame-Options, cookies"],
   ["vulnerabilities", "Vulnerability Check", "Vulnerabilities", P.eye, "Outdated software, mixed content, CORS"],
   ["dns", "DNS & Domain", "DNS", P.globe, "SPF, DMARC, CAA, DNSSEC, record changes"],
   ["third_party", "3rd Party Resources", "3rd Party", P.link, "External scripts, SRI, dangling domains"],
 ];
-const AXIS_LABELS = { ssl: ["SSL", ""], changes: ["Changes", ""], malware: ["Malware", ""], exposed_files: ["Exposed", "Files"],
+const AXIS_LABELS = { ssl: ["SSL", ""], changes: ["Changes", ""], malware: ["Malware", ""], compromise: ["Spam &", "Compromise"], exposed_files: ["Exposed", "Files"],
   headers: ["Headers", ""], vulnerabilities: ["Vulns", ""], dns: ["DNS", ""], third_party: ["3rd", "Party"] };
 const CHECK_LABEL = Object.fromEntries(CHECKS.map(c => [c[0], c[1]]));
 CHECK_LABEL.availability = "Availability"; CHECK_LABEL.agent = "Agent";
@@ -531,7 +532,7 @@ const alertIcon = sev => {
 
 function linksTable(sites, opts = {}) {
   if (!sites.length) return `<div class="empty"><h3>No websites yet</h3>Click <b>Add Website</b> to start monitoring a website.</div>`;
-  const cols = opts.full ? CHECKS : CHECKS.filter(c => ["ssl", "malware", "exposed_files", "headers", "vulnerabilities"].includes(c[0]));
+  const cols = opts.full ? CHECKS : CHECKS.filter(c => ["ssl", "malware", "compromise", "exposed_files", "headers", "vulnerabilities"].includes(c[0]));
   return `<div class="tbl-wrap"><table class="tbl">
     <thead><tr><th>#</th><th>Website</th><th>Status</th>${cols.map(c => `<th class="c">${esc(c[2])}</th>`).join("")}<th>Last Scan</th><th>Actions</th></tr></thead>
     <tbody>${sites.map((s, i) => { const inf = siteInfo(s); return `<tr>
@@ -707,6 +708,7 @@ function pageCheckDetail(v, site, check) {
       <div class="actions">${status}</div>
     </div></div>
     <div class="filters mt" aria-label="Other checks">${CHECKS.map(([kk, ll]) => `<a class="chip" href="#/links/${encodeURIComponent(site.slug)}/${kk}"${kk === k ? ' style="border-color:var(--accent);color:var(--accent);font-weight:600"' : ""}>${esc(ll)}</a>`).join("")}</div>
+    ${DATA.server ? '<div id="defense" class="mt"></div><div id="remediation" class="mt"></div>' : ""}
     ${shown.length ? `<div class="grid mt" style="gap:12px">${shown.map(findingCard).join("")}</div>`
       : `<div class="card empty mt"><h3>${ran ? "No issues found" : "Not run in the latest scan"}</h3>${ran ? "This check passed with nothing to report." : "This check was not part of the latest scan."}</div>`}`;
   // Remove / Delete: the server makes the change through the site's REST API with the saved application password;
@@ -744,6 +746,233 @@ This deletes the plugin files and can't be undone.`)) return;
     ui.updated.add(`${site.slug}|${b.dataset.ignore}`);  // hide it now; the server leaves it out of the data from here on
     render(); refresh();
   });
+  if (DATA.server) { pageCheck = k; loadDefense(site); loadRemediation(site); }
+}
+
+/* ================= Phase 3: autonomous defense ================= */
+// Integrity monitor between scans, reinfection detection, root-cause investigation and controlled automatic
+// recovery (re-applying fixes a person approved, within limits). Off until switched on per site.
+const defenseCache = {};
+let defenseTimer = null;
+let pageCheck = "compromise";   // the check whose page is open: the cards show its fixes, events and investigations
+const cacheKey = site => `${site.slug}|${pageCheck}`;
+const CONF_COLOR = { high: "var(--bad)", medium: "var(--warn)", low: "var(--text-2)" };
+async function loadDefense(site) {
+  const box = document.getElementById("defense");
+  if (!box) return;
+  if (defenseCache[cacheKey(site)]) drawDefense(box, site, defenseCache[cacheKey(site)]);
+  else box.innerHTML = '<div class="card muted">Loading autonomous defense…</div>';
+  try {
+    const res = await fetch(`/api/defense?site=${encodeURIComponent(site.slug)}&check=${encodeURIComponent(pageCheck)}`, { cache: "no-store" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+    const was = defenseCache[cacheKey(site)];
+    defenseCache[cacheKey(site)] = data;
+    const now = document.getElementById("defense");
+    if (now) drawDefense(now, site, data);
+    clearTimeout(defenseTimer);
+    if (data.running) defenseTimer = setTimeout(() => loadDefense(site), 3000);   // a check is running: follow it
+    else if (was && was.running) loadRemediation(site);                            // it may have changed the queue
+  } catch (e) {
+    box.innerHTML = `<div class="card muted">Autonomous defense unavailable: ${esc(e.message)}</div>`;
+  }
+}
+function drawDefense(box, site, d) {
+  const lc = d.last_check || {}, base = d.baseline, inv = (d.investigations || [])[0];
+  const files = d.check === "compromise", sec = (d.security || {}).last_check;
+  const row = (label, value) => `<dt>${esc(label)}</dt><dd>${value}</dd>`;
+  const sevPill = s => s === "INFO" ? '<span class="pill">INFO</span>' : pill(s);
+  const monitor = !d.enabled ? '<span class="status none">Disabled in config.yaml (defense.enabled)</span>'
+    : !d.can_watch ? '<span class="muted">Needs the site\'s WordPress application password (administrator) and an https:// address.</span>'
+    : `${d.running ? `<span class="spin"></span> ${d.running === "investigation" ? "Investigating" : "Checking"} now · ` : ""}`
+      + `Every ${esc(d.interval_minutes)} min${d.monitor_active ? "" : " (runs while the dashboard server is running)"}`
+      + (lc.time ? ` · last check ${esc(ago(lc.time))}` : " · not checked yet")
+      + (lc.error ? ` · <span style="color:var(--bad)">${esc(lc.error)}</span>` : "")
+      + (lc.files != null ? `<div class="muted">${esc(lc.files)} files · ${esc(lc.added)} added, ${esc(lc.modified)} changed, ${esc(lc.removed)} removed since the baseline · ${esc(lc.guards)} applied fix(es) re-checked</div>` : "")
+      + (lc.note ? `<div class="muted">${esc(lc.note)}</div>` : "");
+  const baseline = !base ? '<span class="muted">Recorded on the first check.</span>'
+    : `${esc(base.files)} files, ${esc(fmtDate(base.at))} · ${base.trusted ? `trusted by ${esc(base.by || "")}` : '<b>recorded automatically, not confirmed yet</b>'}`;
+  const auto = `<b style="color:${d.auto_recover ? "var(--good)" : "var(--text-2)"}">${d.auto_recover ? "On" : "Off"}</b>
+      <span class="muted">${d.auto_source === "site" ? "(set for this site)" : "(config.yaml default)"} ·
+      ${esc(d.recoveries_today)} of ${esc(d.limits.max_auto_per_day)} today · at most ${esc(d.limits.max_auto_per_target)} per problem in 7 days · applies to every check of this site</span>`;
+  const blocked = Object.entries(d.blocked || {});
+  const events = (d.events || []).slice(0, 25);
+  const drift = files ? (d.drift || []).filter(x => !x.flagged) : [];
+  const running = d.running ? `<span class="spin"></span> ${d.running === "investigation" ? "Investigating" : "Checking"} now · ` : "";
+  const secMonitor = !d.enabled ? '<span class="status none">Disabled in config.yaml (defense.enabled)</span>'
+    : `${running}This check runs again every ${esc(d.security.interval_minutes)} min${d.monitor_active ? "" : " (while the dashboard server runs)"}`
+      + (sec ? ` · last ${esc(ago(sec.time))} (${esc(sec.source)}) · ${esc(sec.problems)} problem(s) on the site, ${esc(sec.regressions)} came back` : " · not checked yet");
+  box.innerHTML = `<div class="card"><div class="card-h"><h2>Autonomous defense</h2>
+      <div class="right" style="display:flex;gap:8px;flex-wrap:wrap">
+        ${d.enabled && (d.can_watch || !files) ? `<button type="button" class="btn sm" data-def="check" ${d.running ? "disabled" : ""}>Check now</button>` : ""}
+        <button type="button" class="btn sm" data-def="investigate" ${d.running ? "disabled" : ""}>Investigate</button></div></div>
+      <div class="muted">${files ? `Watches the site's files and every applied fix between scans. A problem that comes back after a fix is a
+        <b>reinfection</b>: it is investigated and, when automatic recovery is on, the fix a person approved is applied again
+        (backed up, verified, undoable). New infections always wait for approval.`
+        : `Runs this check again between scans. A problem that comes back after it was fixed (by the agent or by hand) is
+        investigated and, when automatic recovery is on and a person approved the fix, the fix is applied again (backed up,
+        verified, undoable). New problems always wait for approval.`}</div>
+      <div data-def-msg style="margin-top:6px"></div>
+      <dl class="kv mt" style="display:grid;grid-template-columns:max-content 1fr;gap:8px 16px;margin:12px 0 0">
+        ${files ? row("Integrity monitor", monitor) : row("Security monitor", secMonitor)}
+        ${files ? row("Baseline", baseline + (d.can_watch ? ` <button type="button" class="btn sm" data-def="trust" style="margin-left:8px">Trust current files</button>` : "")) : ""}
+        ${row("Urgent alerts", d.alerts ? '<span style="color:var(--good)">Teams connected</span> <span class="muted">· new HIGH/CRITICAL problems, problems that come back and automatic fixes are sent right away</span>'
+          : '<b style="color:var(--warn)">Not connected</b> <span class="muted">· nothing is sent until a Teams webhook is set in Settings &gt; Teams alerts</span>')}
+        ${row("Automatic recovery", auto + (d.can_watch || !files ? ` <button type="button" class="btn sm ${d.auto_recover ? "" : "outline"}" data-def="auto" style="margin-left:8px">${d.auto_recover ? "Turn off" : "Turn on"}</button>` : ""))}
+      </dl>
+      ${blocked.length ? `<div class="mt"><div class="section-title" style="margin:0 0 6px">Automatic recovery stopped for</div>
+        ${blocked.map(([subj, b]) => `<div style="display:flex;gap:10px;align-items:baseline;margin-bottom:4px"><b style="overflow-wrap:anywhere">${esc(subj.split(":").slice(1).join(":"))}</b>
+          <span class="muted">${esc(b.reason)}</span><button type="button" class="btn sm" style="margin-left:auto" data-unblock="${esc(subj)}">Allow again</button></div>`).join("")}</div>` : ""}
+      ${inv ? `<div class="mt"><div class="section-title" style="margin:0 0 6px">Root-cause investigation · ${esc(fmtDate(inv.time))} · ${esc(inv.reason)}
+          ${inv.links && inv.links.md ? ` · <a href="${esc(inv.links.md)}" target="_blank" rel="noopener">full report</a>` : ""}</div>
+        <p style="margin:0 0 8px"><b>${esc(inv.summary)}</b></p>
+        <div class="grid" style="gap:8px">${(inv.causes || []).map(c => `<div class="card" style="padding:10px 12px">
+          <div style="display:flex;gap:8px;align-items:baseline"><span class="pill"><span class="dot" style="background:${CONF_COLOR[c.confidence] || "var(--na)"}"></span>${esc(c.confidence)}</span><b>${esc(c.title)}</b></div>
+          <p style="margin:6px 0 4px">${esc(c.detail)}</p>
+          ${(c.actions || []).length ? `<ul style="margin:0;padding-left:18px">${c.actions.map(a => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}</div>`).join("")}</div></div>` : ""}
+      ${events.length ? `<details class="mt" ${events.some(e => ["reinfection", "infection", "escalated", "recovery_failed"].includes(e.type) && Date.now() - new Date(e.time) < 864e5) ? "open" : ""}>
+        <summary class="section-title" style="cursor:pointer;margin:0">Events (${(d.events || []).length})</summary>
+        <table class="tbl"><tbody>${events.map(e => `<tr><td style="overflow-wrap:anywhere"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${sevPill(e.severity)}
+          <span class="muted">${esc(fmtDate(e.time))}</span></div><b>${esc(e.title)}</b>${e.detail ? `<div class="muted">${esc(e.detail)}</div>` : ""}</td></tr>`).join("")}</tbody></table></details>` : ""}
+      ${drift.length ? `<details class="mt"><summary class="section-title" style="cursor:pointer;margin:0">Unexplained changes since the baseline (${drift.length})</summary>
+        <div class="muted" style="margin:6px 0">Not part of an official WordPress or plugin release and no malware signature matched. If your team made them, use Trust current files.</div>
+        <table class="tbl"><tbody>${drift.slice(0, 100).map(x => `<tr><td style="overflow-wrap:anywhere">${esc(x.path)}
+          <div class="muted">${esc(x.change)} · first seen ${esc(fmtDate(x.seen))}</div></td></tr>`).join("")}</tbody></table></details>` : ""}
+    </div>`;
+  const msg = box.querySelector("[data-def-msg]");
+  const say = (text, bad) => { msg.style.color = bad ? "var(--bad)" : "var(--text-2)"; msg.textContent = text; };
+  const run = async (b, path, body, confirmText) => {
+    if (confirmText && !confirm(confirmText)) return;
+    box.querySelectorAll("button").forEach(x => x.disabled = true);
+    const label = b.innerHTML;
+    b.innerHTML = '<span class="spin"></span> Working…';
+    const res = await api(path, { site: site.slug, ...body });
+    if (!res.ok) say(res.data.message || (res.status === 404 ? "The dashboard server is out of date: restart it." : `Could not do it (HTTP ${res.status})`), true);
+    else if (res.data.files != null) say(`${res.data.files} files recorded as the trusted baseline.`);
+    b.innerHTML = label;
+    await loadDefense(site);
+  };
+  box.querySelectorAll("[data-def]").forEach(b => b.onclick = () => {
+    const what = b.dataset.def;
+    if (what === "check") return run(b, "/api/defense/check", { check: pageCheck });
+    if (what === "investigate") return run(b, "/api/defense/investigate", { check: pageCheck });
+    if (what === "trust") return run(b, "/api/defense/trust", {}, `Record the files on ${site.url} as they are now as the trusted baseline?\n\nOnly do this when you know the site is clean: changes up to now stop being reported.`);
+    if (what === "auto") return run(b, "/api/defense/auto", { enabled: !d.auto_recover }, d.auto_recover ? null
+      : `Turn on automatic recovery for ${site.url}?\n\nWhen a problem comes back after a fix a person approved (on any check of this site), the agent applies that fix again on its own (backed up, verified, undoable), at most ${d.limits.max_auto_per_target} times per problem in 7 days and ${d.limits.max_auto_per_day} per day. New problems still wait for approval.`);
+  });
+  box.querySelectorAll("[data-unblock]").forEach(b => b.onclick = () => run(b, "/api/defense/unblock", { subject: b.dataset.unblock }));
+}
+
+/* ================= Phase 2: remediation approval queue ================= */
+// Proposed fixes for the open check's problems. Nothing changes on the site until someone approves a fix; each
+// approved fix is backed up, applied, verified, and can be undone. Problems the agent can't fix get the steps to fix
+// them by hand; once marked done they are watched for coming back.
+const FIX_LABEL = { trash: "Move to trash", strip_spam: "Remove injected blocks", restore_revision: "Restore clean revision",
+  demote_user: "Demote account", quarantine: "Quarantine file", restore_core: "Restore official core file",  restore_plugin_file: "Restore official plugin file", clean_config: "Remove malicious lines", manual: "Fix by hand",
+  harden: "Turn on protection", block_paths: "Block access", update_plugin: "Update plugin", update_theme: "Update theme",
+  update_core: "Update WordPress", deactivate_plugin: "Deactivate plugin", quarantine_dir: "Quarantine folder",
+  revoke_app_passwords: "Revoke passwords", accept_change: "Accept change" };
+const NO_UNDO = ["update_plugin", "update_theme", "update_core", "revoke_app_passwords"];
+const REQUIRES = { site_guard: "Needs the Kleza Site Guard plugin", "site_guard_1.2": "Needs Kleza Site Guard 1.2",
+  wordpress: "Needs the WordPress application password" };
+const remediationCache = {};
+async function loadRemediation(site) {
+  const box = document.getElementById("remediation");
+  if (!box) return;
+  if (remediationCache[cacheKey(site)]) drawRemediation(box, site, remediationCache[cacheKey(site)]);
+  else box.innerHTML = '<div class="card muted">Loading proposed fixes…</div>';
+  try {
+    const res = await fetch(`/api/remediation?site=${encodeURIComponent(site.slug)}&check=${encodeURIComponent(pageCheck)}`, { cache: "no-store" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+    remediationCache[cacheKey(site)] = data;
+    const now = document.getElementById("remediation");
+    if (now) drawRemediation(now, site, data);
+  } catch (e) {
+    box.innerHTML = `<div class="card muted">Proposed fixes unavailable: ${esc(e.message)}</div>`;
+  }
+}
+function drawRemediation(box, site, data) {
+  const ps = data.proposals || [];
+  const open = ps.filter(p => p.status === "pending" || p.status === "failed");
+  const done = ps.filter(p => p.status === "applied" || p.status === "done" || p.status === "undone");
+  const canApprove = p => p.action !== "manual" && (!p.needs_wp || data.can_fix);
+  const closed = ps.filter(p => p.status === "rejected" || p.status === "resolved");
+  const lowRisk = open.filter(p => p.status === "pending" && p.risk === "low" && canApprove(p));
+  const when = t => t ? fmtDate(t) : "";
+  const status = p => {
+    if (p.status === "applied") return `<div style="margin:4px 0;color:${p.verified ? "var(--good)" : "var(--warn)"}">${p.verified ? "✓ Fixed and verified" : "⚠ Applied, not verified"}: ${esc(p.verification || "")}
+      <span class="muted">· approved by ${esc(p.decided_by || "")} ${esc(when(p.applied_at))}${p.reappeared ? " · <b>the problem came back after this fix</b>" : ""}</span></div>`;
+    if (p.status === "failed") return `<div style="margin:4px 0;color:var(--bad)">Failed: ${esc(p.error || "")}</div>`;
+    if (p.status === "done") return `<div style="margin:4px 0;color:var(--good)">✓ Fixed by hand <span class="muted">· marked done by ${esc(p.decided_by || "")} ${esc(when(p.decided_at))} · watched in case it comes back</span></div>`;
+    if (p.status === "undone") return `<div class="muted" style="margin:4px 0">Undone by ${esc(p.undone_by || "")} ${esc(when(p.undone))}</div>`;
+    if (p.status === "rejected") return `<div class="muted" style="margin:4px 0">Rejected by ${esc(p.decided_by || "")} ${esc(when(p.decided_at))}</div>`;
+    if (p.status === "resolved") return `<div class="muted" style="margin:4px 0">No longer detected by the latest scan.</div>`;
+    return "";
+  };
+  const buttons = p => {
+    if ((p.status === "pending" || p.status === "failed") && p.action === "manual")
+      return `<button type="button" class="btn sm primary" data-fix="done" data-id="${esc(p.id)}" title="I fixed it: watch for it coming back">Done</button>`
+        + `<button type="button" class="btn sm" data-fix="reject" data-id="${esc(p.id)}" title="Not a problem for this site">Reject</button>`;
+    if (p.status === "pending" || p.status === "failed")
+      return (canApprove(p) ? `<button type="button" class="btn sm primary" data-fix="approve" data-id="${esc(p.id)}">${p.status === "failed" ? "Retry" : "Approve"}</button>` : "")
+        + `<button type="button" class="btn sm" data-fix="reject" data-id="${esc(p.id)}">Reject</button>`;
+    if (p.status === "applied" && !NO_UNDO.includes(p.action)) return `<button type="button" class="btn sm" data-fix="undo" data-id="${esc(p.id)}">Undo</button>`;
+    return "";
+  };
+  const card = p => `<div class="card" style="padding:12px 14px">
+      <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
+        <span class="pill">${esc(FIX_LABEL[p.action] || p.action)}</span>
+        <b style="overflow-wrap:anywhere">${esc(p.target)}</b>
+        <span class="muted">${esc(p.source || "")}${p.risk && p.risk !== "none" ? ` · ${esc(p.risk)} risk` : ""}</span>
+        <span style="margin-left:auto;display:flex;gap:6px">${buttons(p)}</span></div>
+      <p style="margin:6px 0 2px">${esc(p.why)}</p>${status(p)}
+      ${p.requires && (p.status === "pending" || p.status === "failed") && REQUIRES[p.requires] ? `<div class="muted" style="margin:4px 0">${esc(REQUIRES[p.requires])}${p.needs_wp && !data.can_fix ? " (not set up for this site)" : ""}.</div>` : ""}
+      ${p.reinfection ? `<div style="margin:4px 0;color:var(--bad)">↻ ${pageCheck === "compromise" ? "Reinfection" : "Came back"}${p.reinfection.count > 1 ? ` (${esc(p.reinfection.count)} times)` : ""}:
+        ${p.reinfection.how === "went away" ? `gone since ${esc(when(p.reinfection.fixed_at))} without a fix` : `${p.reinfection.how === "fixed by hand" ? "fixed by hand" : "fixed"} ${esc(when(p.reinfection.fixed_at))} by ${esc(p.reinfection.fixed_by || "")}`}, back ${esc(when(p.reinfection.detected))}
+        ${p.reinfection.approved_by ? `<span class="muted">· first approved by ${esc(p.reinfection.approved_by)}</span>` : ""}</div>` : ""}
+      ${p.auto_note && (p.status === "pending" || p.status === "failed") ? `<div class="muted" style="margin:4px 0">Automatic recovery: ${esc(p.auto_note)}</div>` : ""}
+      ${p.preview ? `<details style="margin-top:6px"><summary class="muted" style="cursor:pointer">Preview</summary><pre style="margin-top:6px">${esc(p.preview)}</pre></details>` : ""}
+    </div>`;
+  const section = (title, list, openByDefault) => list.length ? `<details ${openByDefault ? "open" : ""} class="mt">
+      <summary class="section-title" style="cursor:pointer;margin:0 0 8px">${esc(title)} (${list.length})</summary>
+      <div class="grid" style="gap:10px">${list.map(card).join("")}</div></details>` : "";
+  box.innerHTML = `<div class="card"><div class="card-h"><h2>Remediation</h2>
+      <div class="right" style="display:flex;gap:8px;align-items:center">
+        ${data.can_fix && lowRisk.length ? `<button type="button" class="btn sm outline" data-fix-all="1">Approve all low-risk (${lowRisk.length})</button>` : ""}
+        <span class="muted">${open.length} waiting · ${done.filter(p => p.status === "applied" || p.status === "done").length} fixed</span></div></div>
+      <div class="muted">Nothing changes on the site until a fix is approved. Each fix is backed up first, checked again after it is applied, and can be undone.
+        Problems the agent can't fix come with the steps to fix them by hand: mark them Done afterwards and they are watched.
+        ${data.can_fix || ps.every(p => !p.needs_wp) ? "" : "<b>Most automatic fixes need the site's WordPress application password (administrator) and an https:// address.</b>"}</div>
+      <div data-fix-msg style="margin-top:6px"></div>
+      ${ps.length ? "" : '<div class="muted mt">Nothing to fix. Fixes appear here after a scan finds a problem.</div>'}
+      ${section("Waiting for a decision", open, true)}${section("Fixed", done, open.length === 0)}${section("Rejected or no longer detected", closed, false)}
+      ${(data.history || []).length ? `<details class="mt"><summary class="section-title" style="cursor:pointer;margin:0">History</summary>
+        <table class="tbl"><tbody>${data.history.map(h => `<tr><td class="muted" style="white-space:nowrap">${esc(fmtDate(h.time))}</td>
+          <td><b>${esc(h.event)}</b> ${esc(h.id)}${h.by ? ` · ${esc(h.by)}` : ""}</td><td class="muted">${esc(h.message)}</td></tr>`).join("")}</tbody></table></details>` : ""}
+    </div>`;
+  const msg = box.querySelector("[data-fix-msg]");
+  const act = async (ids, decision, b) => {
+    const p = ps.find(x => x.id === ids[0]);
+    if (decision === "approve" && !confirm(ids.length > 1
+        ? `Apply ${ids.length} low-risk fixes to ${site.url}?\n\nEach one is backed up first and can be undone.`
+        : `${FIX_LABEL[p.action] || p.action}: ${p.target}\n\n${p.why}\n\nApply this fix to ${site.url}? It is backed up first${NO_UNDO.includes(p.action) ? "; this kind of fix can't be undone from the dashboard" : " and can be undone"}.`)) return;
+    if (decision === "undo" && !confirm(`Undo this fix and put the original back?\n\n${p.target}`)) return;
+    box.querySelectorAll("button").forEach(x => x.disabled = true);
+    if (b) b.innerHTML = '<span class="spin"></span> Working…';
+    const res = decision === "undo" ? await api("/api/remediation/undo", { site: site.slug, id: ids[0] })
+      : await api("/api/remediation/decide", { site: site.slug, ids, decision });
+    const errors = res.ok ? (res.data.results || []).filter(r => r.status === "error" || r.status === "failed") : [];
+    if (!res.ok || errors.length) {
+      msg.style.color = "var(--bad)";
+      msg.textContent = res.ok ? errors.map(r => r.error).join(" · ") : (res.data.message || `Could not do it (HTTP ${res.status})`);
+    }
+    await loadRemediation(site);
+    if (decision === "approve") { refresh(); pollWhileRunning(); }
+  };
+  box.querySelectorAll("[data-fix]").forEach(b => b.onclick = () => act([b.dataset.id], b.dataset.fix, b));
+  const all = box.querySelector("[data-fix-all]");
+  if (all) all.onclick = () => act(lowRisk.map(p => p.id), "approve", all);
 }
 
 // A card that was just ignored is hidden right away, before the refreshed data arrives

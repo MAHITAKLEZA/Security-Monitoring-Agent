@@ -1,0 +1,4 @@
+requests>=2.31
+# Optional, only for --ai / checks.compromise.ai: true
+# anthropic>=1.0
+# pydantic>=2.0

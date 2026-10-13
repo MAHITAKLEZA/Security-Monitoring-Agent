@@ -94,6 +94,8 @@ def main(argv=None):
             zone = config["schedule"].get("timezone") or "local time"
             print(f"Scanning all sites daily at {daily_at} {zone} "
                   f"(next: {next_daily_run(daily_at, tz=tz):%Y-%m-%d %H:%M})", flush=True)
+        # Phase 3 integrity monitor: WordPress sites with an application password, between the full scans
+        threading.Thread(target=server.run_defense_forever, daemon=True).start()
         server.serve_forever(open_browser=not args.no_browser)
         return 0
     if args.loop:

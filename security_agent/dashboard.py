@@ -7,12 +7,13 @@ import logging
 import re
 import secrets
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 import webbrowser
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import requests
 
@@ -20,7 +21,8 @@ from .checks.wordpress import credentials as wp_credentials
 from .ignored import apply_ignored, ignore_key, load_ignored, save_ignored
 from .config import _slug, load_managed_sites, resolve_targets, save_managed_sites
 from .excel import to_xlsx
-from .notify import save_webhook, send_daily_card, webhook_status
+from .fixes import TARGETS
+from .notify import save_webhook, send_daily_card, send_defense_alert, webhook_status
 from .schedule import next_daily_run, schedule_tz
 
 log = logging.getLogger("security_agent.dashboard")
@@ -142,6 +144,9 @@ class DashboardServer:
         self.lock = threading.Lock()
         self.status = {"running": False, "site": None, "started_at": None, "finished_at": None, "error": None}
         self.sessions = set()  # active login session tokens (in memory; cleared on restart)
+        self.defense_running = {}  # slug -> integrity monitor job running for it ("check", "investigation")
+        self.defense_active = False  # the monitor loop is running (--serve)
+        TARGETS.update({t["slug"]: t for t in targets})
 
     # ---- auth -------------------------------------------------------------
     @property
@@ -166,6 +171,7 @@ class DashboardServer:
     def _reload_targets(self):
         self.targets = resolve_targets(self.config)
         self.agent.targets = self.targets
+        TARGETS.update({t["slug"]: t for t in self.targets})
 
     def add_site(self, url, name=None, pages=None, wp_username=None, wp_password=None):
         url = _normalize_site_url(url)
@@ -340,6 +346,229 @@ class DashboardServer:
         self.start_scan(slug)  # confirm the change; harmless if a scan is already running
         return message
 
+    # ---- Phase 2: remediation approval queue (jp_seo_agent) ------------------
+    def _remediation(self, slug):
+        from jp_seo_agent.approvals import Queue, queue_path
+        from jp_seo_agent.site import Site
+
+        target = next((t for t in self.targets if t["slug"] == slug), None)
+        if target is None:
+            raise ValueError("Unknown site")
+        cfg = target["checks"].get("compromise", {})
+        wp_cfg = target["checks"].get("wordpress", {})
+        auth = wp_credentials(wp_cfg) if wp_cfg.get("enabled") else None
+        site = Site(target["url"], timeout=target.get("timeout", 20), pages=target.get("pages"), wp_auth=auth)
+        queue = Queue(queue_path(cfg.get("queue_dir"), site.host), site.url)
+        return site, queue, Path(cfg.get("backup_dir") or "backups") / site.host, cfg
+
+    def remediation_list(self, slug, check=None):
+        """Proposals for one check's page (check=None or "compromise": Spam & Compromise)."""
+        from jp_seo_agent.approvals import scope
+
+        from .fixes import needs_wordpress
+
+        site, queue, _, _ = self._remediation(slug)
+        wanted = check or "compromise"
+        proposals = [{**p, "needs_wp": needs_wordpress(p) if p.get("check") else p["action"] != "manual"}
+                     for p in queue.listing() if scope(p) == wanted]
+        ids = {p["id"] for p in proposals}
+        return {"proposals": proposals, "history": [h for h in queue.data["history"] if h["id"] in ids][-60:][::-1],
+                "can_fix": bool(site.wp_auth and site.secure)}
+
+    def remediation_decide(self, slug, ids, decision):
+        """Approve (back up, apply, verify), reject or mark done (fixed by hand); approvals start a rescan."""
+        from jp_seo_agent.remediate import RemediationError
+
+        from .fixes import needs_wordpress
+
+        site, queue, backups, cfg = self._remediation(slug)
+        by = self.auth.get("name") or self.auth.get("email") or "dashboard"
+        results = []
+        for pid in [str(i) for i in (ids or [])][:50]:
+            p = queue.load().proposals.get(pid)
+            wp = p is not None and (needs_wordpress(p) if p.get("check") else p["action"] != "manual")
+            if decision == "approve" and wp and not (site.wp_auth and site.secure):
+                results.append({"id": pid, "status": "error", "error": "This fix needs the site's WordPress "
+                                "application password (administrator) and an https:// address."})
+                continue
+            try:
+                results.append(queue.decide(pid, decision, by, site, backups, cfg))
+            except RemediationError as exc:
+                results.append({"id": pid, "status": "error", "error": str(exc)})
+        if decision == "approve" and any(r.get("status") == "applied" for r in results):
+            self.start_scan(slug)
+        return results
+
+    def remediation_undo(self, slug, pid):
+        from jp_seo_agent.remediate import RemediationError
+
+        site, queue, backups, cfg = self._remediation(slug)
+        by = self.auth.get("name") or self.auth.get("email") or "dashboard"
+        try:
+            return queue.undo(str(pid), by, site, backups, cfg)
+        except RemediationError as exc:
+            raise FixError(str(exc)) from exc
+
+    # ---- Phase 3: autonomous defense (jp_seo_agent.defense, security_agent.guard) ------------
+    def _monitor(self, slug):
+        from jp_seo_agent.defense import IntegrityMonitor
+
+        site, queue, backups, cfg = self._remediation(slug)
+        return IntegrityMonitor(site, cfg, queue, backups,
+                                out_dir=Path(self.config["report"]["output_dir"]) / "site_guard")
+
+    def _guard(self, slug):
+        from .guard import SecurityGuard
+
+        target = next((t for t in self.targets if t["slug"] == slug), None)
+        if target is None:
+            raise ValueError("Unknown site")
+        return SecurityGuard(target, self.config)
+
+    def defense_status(self, slug, check=None):
+        """The autonomous defense card: integrity monitor (Spam & Compromise page) or security monitor (any other
+        check's page), with events and investigations for that check."""
+        from jp_seo_agent.defense import settings as defense_settings
+
+        monitor = self._monitor(slug)
+        data = monitor.status()
+        wanted = check or "compromise"
+        opts = defense_settings(monitor.cfg)
+        with self.lock:
+            data["running"] = self.defense_running.get(slug)
+        data["check"] = wanted
+        data["monitor_active"] = self.defense_active
+        data["alerts"] = webhook_status(self.config)["configured"]
+        sec = monitor.state.data.get("security_check")
+        data["security"] = {"interval_minutes": opts["security_interval_minutes"], "last_check": sec,
+                            "next_check": (datetime.fromisoformat(sec["time"]) + timedelta(
+                                minutes=opts["security_interval_minutes"])).isoformat() if sec else None}
+        last = (data.get("last_check") or {}).get("time")
+        if data["enabled"] and data["can_watch"] and last:
+            data["next_check"] = (datetime.fromisoformat(last) + timedelta(minutes=data["interval_minutes"])).isoformat()
+        mine = lambda e: (e.get("check") or "compromise") == wanted or (e.get("type") in ("setting",))
+        data["events"] = [e for e in data["events"] if mine(e) or (wanted == "compromise" and not e.get("check"))]
+        data["investigations"] = [i for i in data["investigations"]
+                                  if wanted in (i.get("checks") or ["compromise"])]
+        data["blocked"] = {k: v for k, v in data["blocked"].items()
+                           if (monitor.queue.proposals.get(v.get("proposal")) or {}).get("check", "compromise") == wanted}
+        root = Path(self.config["report"]["output_dir"]).resolve()
+        for inv in data["investigations"]:   # links the dashboard can open through /files/
+            inv["links"] = {}
+            for f in inv.get("files") or []:
+                try:
+                    inv["links"][Path(f).suffix[1:]] = "/files/" + Path(f).resolve().relative_to(root).as_posix()
+                except ValueError:
+                    pass
+        return data
+
+    def _defense_job(self, slug, what, job):
+        """Run a defense job for one site in the background; one job per site at a time."""
+        with self.lock:
+            if self.defense_running.get(slug):
+                return False
+            self.defense_running[slug] = what
+
+        def run():
+            try:
+                events = job()
+                if events:
+                    target = next((t for t in self.targets if t["slug"] == slug), None)
+                    if target:
+                        send_defense_alert(self.config, target, events)
+                    if any(e.get("type") == "recovered" for e in events):
+                        self.start_scan(slug)   # refresh the dashboard's findings after an automatic fix
+            except Exception:
+                log.exception("Autonomous defense job %s failed for %s", what, slug)
+            finally:
+                with self.lock:
+                    self.defense_running.pop(slug, None)
+
+        threading.Thread(target=run, daemon=True).start()
+        return True
+
+    def defense_check(self, slug, check=None):
+        """Check now: the integrity monitor on the Spam & Compromise page, the security monitor elsewhere."""
+        if check and check != "compromise":
+            guard = self._guard(slug)
+            return self._defense_job(slug, "check", lambda: guard.cycle(self._monitor_run))
+        monitor = self._monitor(slug)
+        if not monitor.site.wp_auth:
+            raise ValueError("The integrity monitor needs the site's WordPress application password")
+
+        def job():
+            monitor.check(wait=True)
+            return monitor.new_events
+        return self._defense_job(slug, "check", job)
+
+    def _monitor_run(self, target, checks):
+        return self.agent.monitor_checks(target, checks)
+
+    def defense_investigate(self, slug, check=None):
+        if check and check != "compromise":
+            guard = self._guard(slug)
+
+            def job():
+                with guard.monitor.lock:
+                    guard.monitor.state.load()
+                    guard.queue.load()
+                    guard.current = guard.monitor.state.data.get("security_snapshot") or {}
+                    pids = [p["id"] for p in guard.queue.proposals.values()
+                            if p.get("check") == check and (p["status"] in ("pending", "failed") or p.get("reinfection"))]
+                    guard.monitor.new_events = []
+                    guard.monitor._investigate(pids, None, "requested", force=True)
+                    guard.monitor.state.save()
+                return []
+            return self._defense_job(slug, "investigation", job)
+        monitor = self._monitor(slug)
+
+        def job():
+            monitor.investigate_now()
+            return []
+        return self._defense_job(slug, "investigation", job)
+
+    def defense_trust(self, slug):
+        by = self.auth.get("name") or self.auth.get("email") or "dashboard"
+        return self._monitor(slug).trust_baseline(by)
+
+    def defense_auto(self, slug, enabled):
+        by = self.auth.get("name") or self.auth.get("email") or "dashboard"
+        self._monitor(slug).set_auto(bool(enabled), by)
+
+    def defense_unblock(self, slug, subj):
+        by = self.auth.get("name") or self.auth.get("email") or "dashboard"
+        self._monitor(slug).unblock(str(subj or ""), by)
+
+    def run_defense_forever(self, first_delay=120):
+        """Autonomous defense loop, never while a full scan is running (the scan covers the same ground):
+        the integrity monitor for each WordPress site every defense.watch_interval_minutes, and the security
+        monitor for every site every defense.security_interval_minutes."""
+        from jp_seo_agent.defense import settings as defense_settings
+
+        self.defense_active = True
+        time.sleep(first_delay)
+        due = lambda last, minutes: not last or datetime.now(timezone.utc) - datetime.fromisoformat(last) >= \
+            timedelta(minutes=max(5, float(minutes)))
+        while True:
+            for target in list(self.targets):
+                cfg = target["checks"].get("compromise", {})
+                opts = defense_settings(cfg)
+                if not opts["enabled"] or self.snapshot_status()["running"]:
+                    continue
+                slug = target["slug"]
+                try:
+                    monitor = self._monitor(slug)
+                    data = monitor.state.data
+                    if monitor.site.wp_auth and cfg.get("enabled", True) and \
+                            due((data.get("last_check") or {}).get("time"), opts["watch_interval_minutes"]):
+                        self._defense_job(slug, "check", lambda m=monitor: (m.check(), m.new_events)[1])
+                    elif due((data.get("security_check") or {}).get("time"), opts["security_interval_minutes"]):
+                        guard = self._guard(slug)
+                        self._defense_job(slug, "check", lambda g=guard: g.cycle(self._monitor_run))
+                except Exception:
+                    log.exception("Autonomous defense failed for %s", slug)
+            time.sleep(60)
+
     # ---- scans ------------------------------------------------------------
     def start_scan(self, slug=None, scheduled=False):
         targets = [t for t in self.targets if slug in (None, t["slug"])]
@@ -460,6 +689,14 @@ class DashboardServer:
                     self._json(200, data())
                 elif path == "/api/status":
                     self._json(200, server.snapshot_status())
+                elif path in ("/api/remediation", "/api/defense"):
+                    query = parse_qs(urlparse(self.path).query)
+                    site, check = (query.get("site") or [""])[0], (query.get("check") or [None])[0]
+                    try:
+                        self._json(200, server.remediation_list(site, check) if path == "/api/remediation"
+                                   else server.defense_status(site, check))
+                    except ValueError as exc:
+                        self._json(400, {"ok": False, "message": str(exc)})
                 elif path.startswith("/files/"):
                     self._serve_report_file(path[len("/files/"):])
                 else:
@@ -516,6 +753,32 @@ class DashboardServer:
                         ignored = server.set_ignored(body.get("site"), body.get("title"), body.get("check"), body.get("severity"),
                                                      body.get("key"), body.get("ignore", True) is not False)
                         return self._json(200, {"ok": True, "ignored": ignored})
+                    if path == "/api/remediation/decide":
+                        results = server.remediation_decide(body.get("site"), body.get("ids"), body.get("decision"))
+                        return self._json(200, {"ok": True, "results": results})
+                    if path == "/api/remediation/undo":
+                        try:
+                            p = server.remediation_undo(body.get("site"), body.get("id"))
+                        except FixError as exc:
+                            return self._json(502, {"ok": False, "message": str(exc)})
+                        return self._json(200, {"ok": True, "proposal": p})
+                    if path in ("/api/defense/check", "/api/defense/investigate"):
+                        run = server.defense_check if path.endswith("check") else server.defense_investigate
+                        started = run(body.get("site"), body.get("check"))
+                        return self._json(202 if started else 409, {"ok": started, "message": "started" if started
+                                                                    else "Something is already running for this site"})
+                    if path == "/api/defense/trust":
+                        try:
+                            files = server.defense_trust(body.get("site"))
+                        except ValueError as exc:
+                            return self._json(502, {"ok": False, "message": str(exc)})
+                        return self._json(200, {"ok": True, "files": files})
+                    if path == "/api/defense/auto":
+                        server.defense_auto(body.get("site"), body.get("enabled") is True)
+                        return self._json(200, {"ok": True})
+                    if path == "/api/defense/unblock":
+                        server.defense_unblock(body.get("site"), body.get("subject"))
+                        return self._json(200, {"ok": True})
                     if path == "/api/wp-fix":
                         try:
                             message = server.fix_wordpress(body.get("site"), body.get("action"), body.get("item"))

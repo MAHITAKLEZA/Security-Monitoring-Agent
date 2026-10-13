@@ -28,6 +28,27 @@ DEFAULTS = {
             "inside_scan": True,
             "trusted_script_domains": [],
         },
+        # Website compromise (jp_seo_agent): SEO spam, cloaking, hidden links, malicious redirects, infected files.
+        # ai: off; true turns on Claude triage (needs ANTHROPIC_API_KEY and the anthropic package). site_language: "ja" if the site is Japanese on purpose;
+        # allowed_japanese_paths: e.g. ["/ja/"]; allowed_spam_categories: e.g. ["gambling"] for a casino site.
+        # file_scan needs the Kleza Site Guard plugin (jp_seo_agent/wp-plugin) and an administrator application password.
+        "compromise": {"enabled": True, "ai": False, "model": "", "site_language": "", "allowed_japanese_paths": [],
+                       "allowed_spam_categories": [], "max_pages": 60, "file_scan": True, "max_file_reads": 80,
+                       "trusted_script_domains": [], "queue_dir": "state/remediation", "backup_dir": "backups",
+                       # Phase 3, autonomous defense (jp_seo_agent/defense.py, security_agent/guard.py): integrity
+                       # monitor and security monitor between scans (with --serve), detection of problems that come
+                       # back, root-cause investigation and, when auto_recover is on, re-applying fixes a person
+                       # already approved. These settings cover every check, not only Spam & Compromise.
+                       "defense_dir": "state/defense",
+                       "defense": {"enabled": True, "watch_interval_minutes": 30, "auto_recover": False,
+                                   "auto_actions": ["quarantine", "restore_core", "restore_plugin_file",
+                                                    "clean_config", "trash", "strip_spam", "demote_user", "harden",
+                                                    "block_paths", "deactivate_plugin", "quarantine_dir",
+                                                    "revoke_app_passwords", "update_plugin", "update_theme"],
+                                   "security_interval_minutes": 60, "security_checks": [],
+                                   "max_auto_per_day": 10, "max_auto_per_target": 3, "max_reads": 30,
+                                   "ignore_paths": ["wp-content/cache/", "wp-content/upgrade/", "wp-content/updraft/"],
+                                   "investigate_cooldown_minutes": 360, "timeline_minutes": 30}},
         "vulnerabilities": {"enabled": True},
         "dns": {"enabled": True, "domain_expiry_warning_days": 45},
         "third_party": {"enabled": True, "allowed_script_domains": []},

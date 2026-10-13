@@ -128,6 +128,10 @@ Pages (sidebar):
 
 WordPress issues can be fixed from their cards (Update, Remove, Delete); see [Fixing WordPress issues from the dashboard](#fixing-wordpress-issues-from-the-dashboard).
 
+**Urgent Teams alerts**: with a Teams webhook set (Settings > Teams alerts), a card is sent right away, not at the daily card, when a scan or a background check finds a new HIGH or CRITICAL problem, a problem that came back after a fix, or an automatic fix (applied or failed). Problems already alerted in the last 24 hours (`notifications.teams.urgent_repeat_hours`) and ignored findings aren't sent again; `notifications.teams.urgent: false` turns it off.
+
+**Autonomous defense** (`--serve`, WordPress sites with an application password): between the daily scans an integrity monitor checks each site's files (with the Kleza Site Guard plugin) and every applied fix every 30 minutes. It detects reinfections, runs a read-only root-cause investigation, and, only if you turn on automatic recovery for the site, re-applies fixes a person already approved, within strict limits. Find it under **Spam & Compromise > Autonomous defense**; details in [jp_seo_agent/README.md](jp_seo_agent/README.md#phase-3-autonomous-defense).
+
 The server listens only on `127.0.0.1`. Scan requests need a custom header and are checked by `Host`, so other websites you visit can't trigger scans.
 
 **Exit codes:** `0` means OK. `2` means the worst finding is at or above `report.fail_on` (default `HIGH`), which is useful in cron jobs or CI.

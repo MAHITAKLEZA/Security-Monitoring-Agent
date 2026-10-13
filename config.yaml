@@ -71,6 +71,25 @@ checks:
     # External scripts embedded in content from these domains are expected (inside scan)
     trusted_script_domains: []
 
+  compromise:
+    enabled: true
+    # Phase 2 and 3 for every check: each problem any check finds becomes a proposed fix (or fix-by-hand steps)
+    # under Remediation on that check's page. Autonomous defense, with --serve: the integrity monitor checks
+    # WordPress files and applied fixes every watch_interval_minutes; the security monitor re-runs every other check
+    # on every site every security_interval_minutes. See jp_seo_agent/README.md.
+    defense:
+      enabled: true
+      watch_interval_minutes: 30
+      security_interval_minutes: 60
+      # Re-apply a fix a person already approved when the same target is reinfected. Off by default; it can also
+      # be switched on or off per site from the dashboard (Spam & Compromise > Autonomous defense).
+      auto_recover: false
+      auto_actions: [quarantine, restore_core, restore_plugin_file, clean_config, trash, strip_spam, demote_user,
+                     harden, block_paths, deactivate_plugin, quarantine_dir, revoke_app_passwords, update_plugin,
+                     update_theme]
+      max_auto_per_day: 10         # per site, in 24 hours
+      max_auto_per_target: 3       # per file/post/account in 7 days; after that a person has to fix the root cause
+
   vulnerabilities:
     enabled: true
 
