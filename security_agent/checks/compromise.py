@@ -21,9 +21,8 @@ from ..models import Finding, Severity as S
 
 NAME = "compromise"
 SOURCE = {"outside": "", "wordpress": "WordPress: ", "files": "Files: "}
-DEFENSE_TITLE = {"reinfection": "Reinfection after a fix", "recovered": "Reinfection recovered automatically",
-                 "recovery_failed": "Automatic recovery failed", "escalated": "Keeps coming back: needs a person",
-                 "held": "Reinfection waiting for approval"}
+# Reinfections (also when waiting for approval or coming back again) are reported as the infections themselves
+DEFENSE_TITLE = {"recovered": "Reinfection recovered automatically", "recovery_failed": "Automatic recovery failed"}
 
 
 def _defense_findings(events, host, cfg):

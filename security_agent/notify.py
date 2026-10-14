@@ -177,14 +177,56 @@ EVENT_LABEL = {"reinfection": "Came back after a fix", "infection": "New problem
                "recovered": "Fixed automatically"}
 
 
+# shown without the label: just the problem
+UNLABELED = ("New problem", "Came back after a fix", "Keeps coming back: needs a person", "Waiting for you")
+
+
+def _plain_title(title):
+    """The problem's own title, without a 'Came back after a fix: ' style prefix from the report."""
+    for label in UNLABELED + ("Came back: waiting for approval", "Reinfection after a fix",
+                              "Reinfection waiting for approval"):
+        if title.startswith(label + ": "):
+            return title[len(label) + 2:]
+    return title
+
+
 def _sent_file(config):
     return Path(config["report"]["state_dir"]) / "urgent_alerts.json"
+
+
+def _problem_key(slug, check, title):
+    return f"{slug}|{check}|{ignore_key(title)}"
+
+
+def _load_sent(config):
+    try:
+        return json.loads(_sent_file(config).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_sent(config, sent):
+    path = _sent_file(config)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(sent, indent=1), encoding="utf-8")
+
+
+def forget_resolved(config, target, report):
+    """After a full scan: forget alerted problems of this site that are gone, so if one comes back later it is
+    alerted again. Problems still present stay remembered and are never re-sent."""
+    sent = _load_sent(config)
+    present = {_problem_key(target["slug"], f["check"], f["title"]) for f in report.get("findings", [])}
+    prefix = f"{target['slug']}|"
+    kept = {k: v for k, v in sent.items() if not k.startswith(prefix) or k in present}
+    if len(kept) != len(sent):
+        _save_sent(config, kept)
 
 
 def urgent_from_scan(config, target, report, previous, started):
     """What a finished scan needs to tell someone now: HIGH/CRITICAL problems that weren't in the previous report
     (none on a site's first scan; the daily card covers those) plus autonomous defense events from this scan
     (reinfections, problems that came back, automatic fixes). Ignored findings are left out."""
+    forget_resolved(config, target, report)
     ignored = load_ignored(config).get(target["slug"], {})
     items = []
     if previous is not None:
@@ -211,29 +253,31 @@ def _event_item(e):
             "check": e.get("check") or "compromise", "kind": EVENT_LABEL[e["type"]], "event": e.get("id")}
 
 
+def _sent_key(target, item):
+    """A problem is remembered by site|check|title until it goes away (forget_resolved); an event (a reinfection,
+    an automatic fix) is one occurrence, remembered by its id."""
+    if item.get("event") and item["kind"] != "New problem":
+        return f"event:{item['event']}"
+    return _problem_key(target["slug"], item["check"], item["title"])
+
+
 def send_urgent_alert(config, target, items):
-    """One Teams card right away for whatever needs attention now. A new problem already alerted in the last
-    notifications.teams.urgent_repeat_hours (24) isn't sent again; events (a reinfection, an automatic fix) always
-    are. Sent only when a webhook is set. Returns True when a card was sent."""
+    """One Teams card right away for whatever needs attention now -- HIGH and CRITICAL only. Anything already
+    alerted is never sent again: a problem stays remembered while it is present, an event once per occurrence.
+    Sent only when a webhook is set. Returns True when a card was sent."""
     url = get_webhook(config)
     if not items or not url or _cfg(config).get("urgent", True) is False:
         return False
-    path = _sent_file(config)
-    try:
-        sent = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        sent = {}
+    sent = _load_sent(config)
     now = datetime.now(timezone.utc)
-    repeat = timedelta(hours=float(_cfg(config).get("urgent_repeat_hours", 24)))
     fresh, keys = [], set()
     for item in items:
-        key = f"{target['slug']}|{item['check']}|{ignore_key(item['title'])}"
-        if key in keys:
+        if S.parse(item["severity"]) not in URGENT or item["kind"] == "Fixed automatically":   # only what needs a person
+            continue
+        key = _sent_key(target, item)
+        if key in keys or key in sent:
             continue
         keys.add(key)
-        last = sent.get(key)
-        if item["kind"] == "New problem" and last and now - datetime.fromisoformat(last) < repeat:
-            continue
         fresh.append(item)
     if not fresh:
         return False
@@ -249,14 +293,13 @@ def send_urgent_alert(config, target, items):
         body.append({"type": "TextBlock", "wrap": True, "separator": True,
                      "color": "Good" if item["kind"] == "Fixed automatically" else
                      "Attention" if S.parse(item["severity"]) in URGENT else "Warning",
-                     "text": f"**{item['severity']}** · {item['kind']} · {item['check']} · {item['title']}"})
-        if item.get("detail"):
+                     "text": " · ".join([f"**{item['severity']}**"] + ([] if item["kind"] in UNLABELED else [item["kind"]])
+                                        + [item["check"], _plain_title(item["title"])])})
+        if item.get("detail") and item["kind"] not in UNLABELED:   # problems are only named; details are in the dashboard
             body.append({"type": "TextBlock", "wrap": True, "isSubtle": True, "spacing": "None",
                          "text": item["detail"][:400]})
     if len(fresh) > 10:
         body.append({"type": "TextBlock", "isSubtle": True, "text": f"…and {len(fresh) - 10} more"})
-    body.append({"type": "TextBlock", "isSubtle": True, "wrap": True, "separator": True,
-                 "text": "Open the dashboard for the proposed fixes (Remediation on each check's page)."})
     card = {"type": "message", "attachments": [{"contentType": "application/vnd.microsoft.card.adaptive", "content": {
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json", "type": "AdaptiveCard", "version": "1.4",
         "msteams": {"width": "Full"}, "body": body}}]}
@@ -266,11 +309,11 @@ def send_urgent_alert(config, target, items):
         log.warning("Urgent Teams alert failed: %s", exc)
         return False
     for item in fresh:
-        sent[f"{target['slug']}|{item['check']}|{ignore_key(item['title'])}"] = now.isoformat(timespec="seconds")
+        sent[_sent_key(target, item)] = now.isoformat(timespec="seconds")
+    # Old event ids can go; problem keys stay until the problem is resolved (forget_resolved).
     cutoff = now - timedelta(days=30)
-    sent = {k: v for k, v in sent.items() if datetime.fromisoformat(v) > cutoff}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(sent, indent=1), encoding="utf-8")
+    sent = {k: v for k, v in sent.items() if not k.startswith("event:") or datetime.fromisoformat(v) > cutoff}
+    _save_sent(config, sent)
     log.info("Urgent Teams alert sent for %s (%d item(s))", target["name"], len(fresh))
     return True
 

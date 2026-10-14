@@ -51,6 +51,10 @@ class SiteContext:
             self._pages[path] = (resp, parse_html(resp.text, resp.url))
         return self._pages[path]
 
+    def forget(self, path):
+        """Drop a cached page so the next page() call fetches it again."""
+        self._pages.pop(path, None)
+
     @property
     def home(self):
         return self.page(self.home_path)

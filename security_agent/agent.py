@@ -12,6 +12,7 @@ import requests
 
 from .checks import ALL_CHECKS
 from .checks.wordpress import credentials as wp_credentials
+from .checks.ssl_check import RETRY_DELAYS
 from .dashboard import write_dashboard
 from .guard import SecurityGuard
 from .http_client import SiteContext
@@ -22,9 +23,9 @@ from .schedule import next_daily_run
 
 log = logging.getLogger("security_agent")
 CURRENT = None   # the agent of this process, for fixes that run a check again to verify themselves
-GUARD_TITLES = {"reinfection": "Came back after a fix", "recovered": "Fixed again automatically",
-                "recovery_failed": "Automatic fix failed", "escalated": "Keeps coming back: needs a person",
-                "held": "Came back: waiting for approval"}
+# A problem that came back (and is waiting for approval, or keeps coming back) is already in the report as itself,
+# so it gets no extra finding with a label
+GUARD_TITLES = {"recovered": "Fixed again automatically", "recovery_failed": "Automatic fix failed"}
 
 
 def make_ctx(target):
@@ -109,15 +110,28 @@ class SecurityMonitoringAgent:
         CURRENT = self
         ctx = make_ctx(target)
         findings, durations, completed = [], {}, ["availability"]
-        try:
-            resp, _ = ctx.home
-            log.info("[%s] Fetched %s -> HTTP %s", target["name"], resp.url, resp.status_code)
-            if resp.status_code >= 500:
-                findings.append(Finding("availability", f"Website returns HTTP {resp.status_code}", S.HIGH, resp.url,
-                                        "Investigate server errors."))
-        except requests.RequestException as exc:
-            findings.append(Finding("availability", "Website unreachable", S.CRITICAL, str(exc)[:300],
-                                    "Check hosting, DNS and TLS configuration."))
+        # A timeout, dropped connection or 5xx is tried again before it counts: one network blip is not an outage
+        unreachable = None
+        for attempt, delay in enumerate((*RETRY_DELAYS, None)):
+            try:
+                resp, _ = ctx.home
+            except requests.RequestException as exc:
+                if delay is None:
+                    unreachable = Finding("availability", "Website unreachable", S.CRITICAL,
+                                          f"Failed {attempt + 1} times: {exc.__class__.__name__}: {exc}"[:300],
+                                          "Check hosting, DNS and TLS configuration.")
+                    findings.append(unreachable)
+                    break
+            else:
+                if resp.status_code < 500 or delay is None:
+                    log.info("[%s] Fetched %s -> HTTP %s", target["name"], resp.url, resp.status_code)
+                    if resp.status_code >= 500:
+                        findings.append(Finding("availability", f"Website returns HTTP {resp.status_code}", S.HIGH,
+                                                f"{resp.url} ({attempt + 1} attempts)", "Investigate server errors."))
+                    break
+                ctx.forget(ctx.home_path)
+            log.info("[%s] Home page failed (attempt %d), trying again in %ss", target["name"], attempt + 1, delay)
+            time.sleep(delay)
 
         for name, module in ALL_CHECKS.items():
             check_cfg = target["checks"].get(name, {})
@@ -134,6 +148,11 @@ class SecurityMonitoringAgent:
                 findings.append(Finding(name, f"Check '{name}' could not complete", S.INFO,
                                         f"{exc.__class__.__name__}: {exc}"[:300]))
             durations[name] = time.monotonic() - t0
+        if unreachable:   # the TLS failure is the same outage, not a second problem
+            tls = [f for f in findings if f.check == "ssl" and f.title == "TLS connection failed"]
+            findings = [f for f in findings if f not in tls]
+            if tls:
+                unreachable.detail = f"{unreachable.detail}; TLS: {tls[0].detail}"[:400]
         return findings, durations, completed, ctx
 
     def monitor_checks(self, target, checks):

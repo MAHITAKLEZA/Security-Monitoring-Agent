@@ -3,6 +3,7 @@
 import hashlib
 import socket
 import ssl
+import time
 from datetime import datetime, timezone
 
 import requests
@@ -10,6 +11,7 @@ import requests
 from ..models import Finding, Severity as S
 
 NAME = "ssl"
+RETRY_DELAYS = (5, 20)   # seconds before the 2nd and 3rd connection attempt
 
 
 def _connect(host, port, timeout, context):
@@ -64,14 +66,20 @@ def run(ctx, cfg, state):
                         "Serve the site exclusively over HTTPS with a trusted certificate.")]
 
     st = state.setdefault(NAME, {})
-    try:
-        cert, der, protocol = _connect(ctx.host, ctx.port, ctx.timeout, ssl.create_default_context())
-    except ssl.SSLCertVerificationError as exc:
-        return [Finding(NAME, "SSL certificate validation failed", S.CRITICAL, exc.verify_message or str(exc),
-                        f"Install a valid, trusted certificate chain covering {ctx.host}.")]
-    except (ssl.SSLError, OSError) as exc:
-        return [Finding(NAME, "TLS connection failed", S.CRITICAL, str(exc),
-                        "Verify the web server is reachable on port 443 and TLS is configured correctly.")]
+    # A dropped connection or timeout is tried again before it counts: one network blip is not a TLS problem
+    for attempt, delay in enumerate((*RETRY_DELAYS, None)):
+        try:
+            cert, der, protocol = _connect(ctx.host, ctx.port, ctx.timeout, ssl.create_default_context())
+            break
+        except ssl.SSLCertVerificationError as exc:
+            return [Finding(NAME, "SSL certificate validation failed", S.CRITICAL, exc.verify_message or str(exc),
+                            f"Install a valid, trusted certificate chain covering {ctx.host}.")]
+        except (ssl.SSLError, OSError) as exc:
+            if delay is None:
+                return [Finding(NAME, "TLS connection failed", S.CRITICAL,
+                                f"Failed {attempt + 1} times: {exc.__class__.__name__}: {exc}",
+                                "Verify the web server is reachable on port 443 and TLS is configured correctly.")]
+            time.sleep(delay)
 
     findings = []
     not_after = datetime.fromtimestamp(ssl.cert_time_to_seconds(cert["notAfter"]), timezone.utc)

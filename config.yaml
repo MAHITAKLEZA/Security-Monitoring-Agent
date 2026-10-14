@@ -80,7 +80,7 @@ checks:
     defense:
       enabled: true
       watch_interval_minutes: 30
-      security_interval_minutes: 60
+      security_interval_minutes: 30   # immediate alerts: HIGH/CRITICAL only, each sent once
       # Re-apply a fix a person already approved when the same target is reinfected. Off by default; it can also
       # be switched on or off per site from the dashboard (Spam & Compromise > Autonomous defense).
       auto_recover: false
@@ -138,6 +138,8 @@ notifications:
   teams:
     webhook_url_file: secrets/teams.env
     min_severity: HIGH
+    # Urgent (immediate) cards between the daily ones come from the security monitor every
+    # defense.security_interval_minutes (30): only HIGH/CRITICAL, and never the same problem twice while it lasts.
 
 # Sites added from the dashboard's "Add Link" button are saved here (config.yaml is never rewritten)
 sites_file: sites.json
