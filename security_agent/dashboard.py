@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 import requests
 
+from .checks import ssh_inside
 from .checks.wordpress import credentials as wp_credentials
 from .ignored import apply_ignored, ignore_key, load_ignored, save_ignored
 from .config import _slug, load_managed_sites, resolve_targets, save_managed_sites
@@ -146,6 +147,7 @@ class DashboardServer:
         self.sessions = set()  # active login session tokens (in memory; cleared on restart)
         self.defense_running = {}  # slug -> integrity monitor job running for it ("check", "investigation")
         self.defense_active = False  # the monitor loop is running (--serve)
+        self.pending_keys = {}  # key id -> generated SSH private key, until the site it was made for is added
         TARGETS.update({t["slug"]: t for t in targets})
 
     # ---- auth -------------------------------------------------------------
@@ -173,7 +175,7 @@ class DashboardServer:
         self.agent.targets = self.targets
         TARGETS.update({t["slug"]: t for t in self.targets})
 
-    def add_site(self, url, name=None, pages=None, wp_username=None, wp_password=None):
+    def add_site(self, url, name=None, pages=None, wp_username=None, wp_password=None, ssh=None):
         url = _normalize_site_url(url)
         if any(t["url"].rstrip("/").lower() == url.rstrip("/").lower() for t in self.targets):
             raise ValueError("This website is already being monitored")
@@ -189,7 +191,10 @@ class DashboardServer:
             raise ValueError(f"Pages must start with '/': {', '.join(bad)}")
         if page_list:
             entry["pages"] = (["/"] if "/" not in page_list else []) + page_list[:20]
-        self._attach_wordpress(entry, url, name, wp_username, wp_password)
+        if ssh:
+            self._attach_ssh(entry, url, name, ssh)
+        else:
+            self._attach_wordpress(entry, url, name, wp_username, wp_password)
         sites = load_managed_sites(self.config)
         sites.append(entry)
         save_managed_sites(self.config, sites)
@@ -215,6 +220,56 @@ class DashboardServer:
             secret_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
             wp["app_password_file"] = secret_path.as_posix()
         entry["checks"] = {"wordpress": wp}
+
+    def generate_ssh_key(self):
+        """A new key pair for a site's SSH inside scan: the private key stays on this server, the public key is shown
+        so it can be added to the website's server."""
+        private, public = ssh_inside.generate_key()
+        key_id = secrets.token_urlsafe(12)
+        with self.lock:
+            self.pending_keys = dict(list(self.pending_keys.items())[-20:])
+            self.pending_keys[key_id] = private
+        return key_id, public
+
+    def _attach_ssh(self, entry, url, name, ssh):
+        """Inside scan over SSH for a site that isn't WordPress. The login and folder are tested first; the private
+        key is written to a local secrets/<slug>.ssh.key file (never to sites.json) and the server's host key is
+        pinned, so a changed server is reported instead of trusted. Only the username and key are required: the host
+        defaults to the site's domain, and the usual SSH ports and website folders are tried."""
+        domain = urlparse(url).hostname or ""
+        host = str(ssh.get("host") or "").strip().lower() or domain
+        if not re.fullmatch(r"[a-z0-9.:-]+", host or ""):
+            raise ValueError("Enter the SSH host (server name or IP address)")
+        port = str(ssh.get("port") or "").strip()
+        if port and not (port.isdigit() and 0 < int(port) < 65536):
+            raise ValueError("The SSH port must be a number from 1 to 65535")
+        port = int(port) if port else None
+        username = str(ssh.get("username") or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9._@-]{1,64}", username):
+            raise ValueError("Enter the SSH username")
+        web_root = str(ssh.get("web_root") or "").strip()
+        if len(web_root) > 300 or "\n" in web_root:
+            raise ValueError("Enter the website folder on the server, e.g. /home/user/public_html")
+        with self.lock:
+            key_text = self.pending_keys.get(str(ssh.get("key_id") or "")) or str(ssh.get("private_key") or "").strip()
+        if "PRIVATE KEY" not in key_text:
+            raise ValueError("Generate a key, or paste the private key (it starts with -----BEGIN ... PRIVATE KEY-----)")
+        try:
+            host_key, port, root = ssh_inside.probe(host, port, username, key_text, web_root, domain)
+        except ssh_inside.SSHError as exc:
+            raise ValueError(str(exc)) from exc
+        slug = _slug(name or urlparse(url).hostname or "site")
+        key_path = Path("secrets") / f"{slug}.ssh.key"
+        key_path.parent.mkdir(parents=True, exist_ok=True)
+        key_path.write_text(key_text.strip() + "\n", encoding="utf-8")
+        try:
+            key_path.chmod(0o600)
+        except OSError:
+            pass
+        with self.lock:
+            self.pending_keys.pop(str(ssh.get("key_id") or ""), None)
+        entry["checks"] = {"malware": {"ssh": {"host": host, "port": port, "username": username, "web_root": root,
+                                               "key_file": key_path.as_posix(), "host_key": host_key}}}
 
     def remove_site(self, slug):
         target = next((t for t in self.targets if t["slug"] == slug), None)
@@ -742,10 +797,14 @@ class DashboardServer:
                         pages = body.get("pages") or []
                         if isinstance(pages, str):
                             pages = pages.split(",")
+                        ssh = body.get("ssh") if isinstance(body.get("ssh"), dict) else None
                         slug = server.add_site(body.get("url"), body.get("name"), pages,
-                                               body.get("wp_username"), body.get("wp_password"))
+                                               body.get("wp_username"), body.get("wp_password"), ssh)
                         scan = server.start_scan(slug) if body.get("scan") else (False, "not requested")
                         return self._json(201, {"ok": True, "slug": slug, "scan_started": scan[0]})
+                    if path == "/api/ssh/keygen":
+                        key_id, public = server.generate_ssh_key()
+                        return self._json(200, {"ok": True, "key_id": key_id, "public_key": public})
                     if path == "/api/sites/delete":
                         server.remove_site(body.get("slug"))
                         return self._json(200, {"ok": True})

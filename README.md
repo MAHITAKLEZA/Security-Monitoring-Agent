@@ -133,7 +133,7 @@ Pages (sidebar):
 
 WordPress issues can be fixed from their cards (Update, Remove, Delete); see [Fixing WordPress issues from the dashboard](#fixing-wordpress-issues-from-the-dashboard).
 
-**Urgent Teams alerts**: with a Teams webhook set (Settings > Teams alerts), a card is sent right away, not at the daily card, when a scan or a background check finds a new HIGH or CRITICAL problem, a problem that came back after a fix, or an automatic fix (applied or failed). Problems already alerted in the last 24 hours (`notifications.teams.urgent_repeat_hours`) and ignored findings aren't sent again; `notifications.teams.urgent: false` turns it off.
+**Urgent Teams alerts**: with a Teams webhook set (Settings > Teams alerts), a card is sent right away, not at the daily card, when a scan or a background check finds a new HIGH or CRITICAL problem, a problem that came back after a fix, or an automatic fix (applied or failed) -- HIGH and CRITICAL only. The security monitor checks every 30 minutes (`defense.security_interval_minutes`). A problem that was already alerted is never sent again while it is still there (once it's gone, a return counts as new); each event is sent once; ignored findings aren't sent. `notifications.teams.urgent: false` turns it off. The daily card is unchanged.
 
 **Autonomous defense** (`--serve`, WordPress sites with an application password): between the daily scans an integrity monitor checks each site's files (with the Kleza Site Guard plugin) and every applied fix every 30 minutes. It detects reinfections, runs a read-only root-cause investigation, and, only if you turn on automatic recovery for the site, re-applies fixes a person already approved, within strict limits. Find it under **Spam & Compromise > Autonomous defense**; details in [jp_seo_agent/README.md](jp_seo_agent/README.md#phase-3-autonomous-defense).
 
@@ -163,9 +163,40 @@ password=abcd efgh ijkl mnop qrst uvwx
 (for obfuscated code, injected scripts, hidden iframes, hidden spam links and spam keywords), media uploads
 (PHP/HTML/JS files, SVGs with script), recently created or new administrators, unidentified or newly installed plugins,
 and a site address pointing to another domain. The results appear in the dashboard's Malware column as "Inside scan: …".
-Theme and plugin PHP files can't be read over the REST API, so a file-level scan needs SFTP/SSH or a server-side scanner.
+Theme and plugin PHP files can't be read over the REST API: use the Site Guard plugin, or the SSH inside scan below.
 
 The password is sent only over HTTPS, only to the site's own REST API, and never written to reports or state files. Scans are read-only (GET only); the site is changed only when you click a fix button or approve a proposed fix in the dashboard (below), or by automatic recovery if you turn it on for the site. Optionally set `WPSCAN_API_TOKEN` (free at wpscan.com) to report known plugin vulnerabilities.
+
+### SSH key (inside scan for sites that aren't WordPress)
+React, plain HTML, PHP, Laravel, Node and other sites have no application password, so they are scanned from inside
+over SSH/SFTP with a username and an SSH key. In the dashboard: **Add Website > Other site (SSH)**, then enter only the
+SSH username and the key. The host is the site's domain, ports 22, 65002 (Hostinger) and 2222 are tried, and the website
+folder is found in the usual places (`domains/<domain>/public_html`, `public_html`, `/var/www/<domain>`, `/var/www/html`
+and others). If one isn't found, set it under **Advanced** (a site behind Cloudflare needs the server's own host or IP).
+
+For the key, either click **Generate a key** (the private key stays on the dashboard server) and add the public key
+shown to the website's server (cPanel: Security > SSH Access > Manage SSH Keys > Import Key, then Authorize; Hostinger:
+Advanced > SSH Access; VPS: `~/.ssh/authorized_keys`), or paste a private key you made with
+`ssh-keygen -t ed25519 -f kleza_scan -N ""`. **Add Website** tests the login and the folder before saving. The private key
+goes to `secrets/<site>.ssh.key`; the server's host key is pinned, so if it changes later the scan stops and reports it.
+
+The scan only reads (it lists folders and reads files over SFTP; it never writes or runs commands). Under the Malware
+check as "Inside scan: …" it reports web shells and injected code in PHP, JS, HTML, SVG and `.htaccess` files, cloaking
+rewrite rules, scripts in upload or media folders, `.env` files, keys, dumps and backups inside the web folder,
+world-writable files, and server-side code files that are new or changed since the last scan. `node_modules` and `.git`
+are not walked. Up to 400 files are read per scan (new and changed first), so a large site is fully read over a few
+scans. For a VPS, a separate user with read-only access to the site is best:
+`sudo adduser kleza_scan && sudo setfacl -R -m u:kleza_scan:rX /var/www/site`.
+
+In `config.yaml` the same thing is set per site:
+```yaml
+targets:
+  - url: https://example.com/
+    checks:
+      malware:
+        ssh: {host: example.com, port: 22, username: kleza_scan, key_file: secrets/example.ssh.key,
+              web_root: /var/www/site, host_key: "ssh-ed25519 AAAA..."}   # host_key optional (pins the server)
+```
 
 ### Fixing WordPress issues from the dashboard
 In live mode (`--serve`), WordPress issue cards on a link's check page get a button that makes the change on the site with the
@@ -203,7 +234,7 @@ repository, which works in three phases:
    usernames hidden, `security.txt`), blocking exposed files in `.htaccess`, plugin, theme and core updates, and revoking
    unused application passwords. Anything the agent can't do itself becomes a "fix by hand" proposal with exact steps.
 3. **Autonomous defense** (with `--serve`). The integrity monitor checks WordPress files and applied fixes every
-   `watch_interval_minutes` (30), and the security monitor re-runs the other checks every `security_interval_minutes` (60).
+   `watch_interval_minutes` (30), and the security monitor re-runs the other checks every `security_interval_minutes` (30).
    A problem that comes back raises an event, an urgent Teams alert and a read-only root-cause investigation. If you
    turn on **automatic recovery** for a site (off by default), fixes a person already approved are re-applied, up to
    `max_auto_per_day` (10) per site and `max_auto_per_target` (3) per file, post or account in 7 days.

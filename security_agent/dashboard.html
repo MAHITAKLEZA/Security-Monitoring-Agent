@@ -216,6 +216,9 @@ dialog::backdrop { background: rgba(10,20,40,.45); }
 .field input[type=text], .field input[type=url], .field input[type=password] { width: 100%; border: 1px solid var(--border); background: var(--surface); border-radius: 9px; padding: 9px 12px; }
 .field input:focus, .search input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .field .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.field textarea { width: 100%; border: 1px solid var(--border); background: var(--surface); border-radius: 9px; padding: 9px 12px; font: 12px ui-monospace, Consolas, monospace; resize: vertical; }
+.field textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.field-row { display: flex; gap: 10px; } .field-row .field { flex: 1; min-width: 0; } .field-row .field.port { flex: 0 0 90px; }
 .form-err { color: var(--bad); font-size: 13px; }
 .check-row { display: flex; gap: 8px; align-items: center; font-size: 13px; }
 .tooltip { position: fixed; pointer-events: none; z-index: 100; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 6px 20px rgba(0,0,0,.14); border-radius: 9px; padding: 8px 10px; font-size: 12px; min-width: 150px; opacity: 0; transition: opacity .08s; }
@@ -308,9 +311,21 @@ a.kc:hover { border-color: var(--accent); text-decoration: none; }
       <div class="field"><label for="fUrl">Website link</label><input id="fUrl" type="text" placeholder="https://example.com" autocomplete="off" required>
         <div class="hint">Any website. Only add sites you own or are authorized to test.</div></div>
       <div class="field"><label for="fName">Website name <span class="muted">(optional)</span></label><input id="fName" type="text" placeholder="e.g. Kleza" maxlength="60" autocomplete="off"></div>
+      <div class="field"><label>Inside scan <span class="muted">(optional)</span></label>
+        <div class="seg" role="group" aria-label="Website type"><button type="button" id="tWp" aria-pressed="true">WordPress</button><button type="button" id="tSsh" aria-pressed="false">Other site (SSH)</button></div>
+        <div class="hint">WordPress sites log in with an application password. Any other site (React, HTML, PHP, Laravel, Node…) can be scanned from inside with an SSH key.</div></div>
+      <div id="wpFields">
       <div class="field"><label for="fWpUser">Website username <span class="muted">(optional)</span></label><input id="fWpUser" type="text" placeholder="admin username" autocomplete="off"></div>
       <div class="field"><label for="fWpPass">Website application password <span class="muted">(optional)</span></label><input id="fWpPass" type="password" placeholder="abcd efgh ijkl mnop qrst uvwx" autocomplete="new-password">
         <div class="hint">Optional login for a deeper scan of the site (for WordPress: plugins, themes, users and the inside malware scan). For WordPress, create it in wp-admin under Users &rsaquo; Profile &rsaquo; Application Passwords. Stored in a local <code>secrets/</code> file, never in reports.</div></div>
+      </div>
+      <div id="sshFields" class="hidden">
+      <div class="field"><label for="fSshUser">SSH username</label><input id="fSshUser" type="text" placeholder="e.g. u123456789 or kleza_scan" autocomplete="off">
+        <div class="hint">From the hosting panel's SSH Access page.</div></div>
+      <div class="field"><label for="fSshKey">Paste your private key</label>
+        <textarea id="fSshKey" rows="5" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;…&#10;-----END OPENSSH PRIVATE KEY-----" autocomplete="off" spellcheck="false"></textarea>
+        <div class="hint">A key without a passphrase. Stored in a local <code>secrets/</code> file, never in reports. Read-only access to the website folder is enough.</div></div>
+      </div>
       <label class="check-row"><input type="checkbox" id="fScan" checked> Scan immediately after adding</label>
       <div class="form-err" id="formErr" role="alert"></div>
     </div>
@@ -1255,17 +1270,31 @@ function openAdd() {
   document.getElementById("addSubmit").classList.toggle("hidden", !DATA.server);
   document.getElementById("formErr").textContent = "";
   document.getElementById("addForm").reset();
+  setSiteType(false);
   dlg.showModal();
   if (DATA.server) document.getElementById("fUrl").focus();
 }
+let sshMode = false;
+const $id = id => document.getElementById(id);
+function setSiteType(ssh) {
+  sshMode = ssh;
+  $id("tWp").setAttribute("aria-pressed", String(!ssh)); $id("tSsh").setAttribute("aria-pressed", String(ssh));
+  $id("wpFields").classList.toggle("hidden", ssh); $id("sshFields").classList.toggle("hidden", !ssh);
+}
+$id("tWp").onclick = () => setSiteType(false); $id("tSsh").onclick = () => setSiteType(true);
 document.getElementById("addCancel").onclick = () => dlg.close();
 document.getElementById("addForm").addEventListener("submit", async e => {
   e.preventDefault();
   const btn = document.getElementById("addSubmit"), err = document.getElementById("formErr");
   btn.disabled = true; err.textContent = "";
-  const res = await api("/api/sites", { url: document.getElementById("fUrl").value, name: document.getElementById("fName").value, scan: document.getElementById("fScan").checked,
-    wp_username: document.getElementById("fWpUser").value, wp_password: document.getElementById("fWpPass").value });
-  btn.disabled = false;
+  const body = { url: $id("fUrl").value, name: $id("fName").value, scan: $id("fScan").checked };
+  // Host, port and website folder are detected on the server.
+  if (sshMode) body.ssh = { username: $id("fSshUser").value, private_key: $id("fSshKey").value };
+  else Object.assign(body, { wp_username: $id("fWpUser").value, wp_password: $id("fWpPass").value });
+  const label = btn.textContent;
+  if (sshMode) btn.textContent = "Connecting…";
+  const res = await api("/api/sites", body);
+  btn.disabled = false; btn.textContent = label;
   if (!res.ok) { err.textContent = res.data.message || "Could not add this link"; return; }
   dlg.close();
   await refresh();

@@ -3,3 +3,4 @@ dnspython>=2.4
 PyYAML>=6.0
 openpyxl>=3.1
 tzdata>=2024.1; sys_platform == "win32"
+paramiko>=3.4
