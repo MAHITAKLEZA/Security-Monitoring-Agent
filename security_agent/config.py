@@ -15,7 +15,7 @@ DEFAULTS = {
     # List of sites to monitor; each entry: url (required), name, domain, pages, checks (per-site overrides)
     "targets": [],
     "checks": {
-        "ssl": {"enabled": True, "expiry_warning_days": 30, "expiry_critical_days": 7},
+        "ssl": {"enabled": True, "expiry_warning_days": 30, "expiry_critical_days": 7, "auto_renew_failed_days": 3},
         "headers": {"enabled": True},
         "exposed_files": {"enabled": True, "max_workers": 4, "max_sourcemap_checks": 5, "extra_paths": []},
         "changes": {"enabled": True, "content_similarity_threshold": 0.6, "auto_update_baseline": False},

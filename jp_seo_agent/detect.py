@@ -138,6 +138,7 @@ class OutsideScan:
                                "", location=page.final_url)
 
     def hidden(self, url, markup):
+        hidden_links = []   # external links hidden off-screen or shrunk to nothing, across the whole page
         for block, seo_style in hidden_blocks(markup, with_style=True):
             text = strip_html(block)
             external = [u for u in LINK_HREF.findall(block) if self.site.is_external(u)]
@@ -151,10 +152,13 @@ class OutsideScan:
                                "Spam text hidden from visitors with CSS but readable by search engines.",
                                "Remove it from the content or template that outputs it.",
                                terms=terms_of(sc, kinds)[:10], links=external[:5])
-            elif seo_style and len({urlparse(u).hostname for u in external}) >= 2:  # menus use display:none
-                self.group.add("Links to external sites hidden off-screen", "MEDIUM", url,
-                               "Links moved off-screen or shrunk to nothing are a classic SEO spam injection.",
-                               "Check the template or content block that outputs them.", links=external[:10])
+            elif seo_style:  # menus use display:none, not off-screen or zero-size boxes
+                hidden_links += external
+        # Counted per page: injections often put each link in its own hidden box
+        if len({urlparse(u).hostname for u in hidden_links}) >= 2:
+            self.group.add("Links to external sites hidden off-screen", "MEDIUM", url,
+                           "Links moved off-screen or shrunk to nothing are a classic SEO spam injection.",
+                           "Check the template or content block that outputs them.", links=hidden_links[:10])
 
     def redirect_code(self, url, markup):
         meta = META_REFRESH.search(markup)
@@ -209,7 +213,7 @@ class OutsideScan:
                                           "Attackers add their own sitemaps to get spam pages indexed. Remove the "
                                           "line unless you know why it is there.", {"sitemap": url}))
         queue = [u for u in declared if not site.is_external(u)] or [site.abs_url(p) for p in DEFAULT_SITEMAPS]
-        seen, page_urls = set(), []
+        seen, page_urls, dead = set(), [], []
         max_sitemaps, max_urls = int(cfg.get("max_sitemaps", 20)), int(cfg.get("max_sitemap_urls", 5000))
         while queue and len(seen) < max_sitemaps and len(page_urls) < max_urls:
             url = queue.pop(0)
@@ -218,12 +222,22 @@ class OutsideScan:
             seen.add(url)
             resp, text = site.fetch(url, GOOGLEBOT_UA, max_bytes=10_000_000)
             if resp is None or resp.status_code != 200 or "<loc" not in text.lower():
+                if resp is not None and url in declared:
+                    dead.append(url)
                 continue
             locs = [html_lib.unescape(u) for u in LOC.findall(text)]
             if re.search(r"<sitemapindex\b", text, re.I):
                 queue += [u for u in locs if not site.is_external(u)]
             else:
                 page_urls += locs
+        # Leftover from a spam hack: robots.txt still lists the attacker's numbered sitemaps after the pages were removed
+        if len(dead) >= 3:
+            self.extra.append(Finding("outside", f"robots.txt lists {len(dead)} sitemaps that don't exist", "MEDIUM",
+                                      site.abs_url("/robots.txt"),
+                                      "Attackers add their own sitemaps to robots.txt to get spam pages indexed; these "
+                                      "are left over even if the spam pages are gone. Remove the sitemap lines you "
+                                      "didn't add and check Search Console for unknown owners.",
+                                      {"sitemaps": dead[:20]}))
         page_urls = list(dict.fromkeys(page_urls))[:max_urls]
         self.stats.update(sitemaps=len(seen), sitemap_urls=len(page_urls))
         for url in page_urls:

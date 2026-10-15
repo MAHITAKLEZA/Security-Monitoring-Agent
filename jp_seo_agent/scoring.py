@@ -25,7 +25,12 @@ CATEGORY_TERMS = {
                "generic viagra", "buy cialis", "erectile dysfunction pills"),
     "gambling": ("slot gacor", "situs slot", "slot online", "judi online", "judi bola", "togel", "sbobet", "maxwin",
                  "rtp slot", "rtp live", "scatter hitam", "link alternatif", "bandar togel", "casino online",
-                 "online casino", "poker online", "slot88", "slot777", "gacor", "pragmatic play", "pg soft"),
+                 "online casino", "poker online", "slot88", "slot777", "gacor", "pragmatic play", "pg soft",
+                 "casino bonus", "free spins", "no deposit bonus", "betting sites", "sports betting",
+                 # injected spam is often in other languages (Polish, German, Spanish/Portuguese, French, Italian, Russian)
+                 "kasyno", "kasyna", "kasyn", "kasyno online", "kasyna online", "zakłady bukmacherskie",
+                 "spielautomaten", "online spielothek", "casino en línea", "casino en linea", "casino en ligne",
+                 "apuestas", "cassino", "apostas", "scommesse", "казино", "онлайн казино", "ставки на спорт"),
     "adult": ("porn", "xxx", "escort service", "escorts", "sex cams", "hentai", "adult dating", "hot singles",
               "nude girls", "onlyfans leak"),
     "scam": ("payday loans", "replica watches", "cheap jerseys", "fake id", "buy followers", "essay writing service",
@@ -110,11 +115,14 @@ def allowed_path(url, allowed_prefixes):
 
 
 # ---- hidden content ---------------------------------------------------------------
+# A box under 2px tall or wide with overflow:hidden, in either order (spam uses odd sizes like height: 1.49px)
+TINY_BOX = (r"^(?=.*overflow\s*:\s*hidden)"
+            r"(?=.*(?<![\w-])(?:height|width)\s*:\s*(?:[01](?:\.\d+)?|\.\d+)(?:px)?\s*(?:;|$))")
 HIDDEN_STYLE = re.compile(r"display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0(?:px|em|rem)?\s*(?:;|$)|"
-                          r"(?:left|top|text-indent)\s*:\s*-\d{3,}px|(?:height|width)\s*:\s*0(?:px)?\s*;[^\"']*overflow\s*:\s*hidden|"
+                          r"(?:left|top|text-indent)\s*:\s*-\d{3,}px|" + TINY_BOX + "|"
                           r"opacity\s*:\s*0(?:\.0+)?\s*(?:;|$)", re.I)
 SEO_HIDING = re.compile(r"font-size\s*:\s*0|(?:left|top|text-indent)\s*:\s*-\d{3,}px|(?:height|width)\s*:\s*0|"
-                        r"opacity\s*:\s*0(?:\.0+)?\s*(?:;|$)", re.I)
+                        + TINY_BOX + r"|opacity\s*:\s*0(?:\.0+)?\s*(?:;|$)", re.I)
 TAG = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>", re.S)
 VOID = {"br", "img", "input", "meta", "link", "hr", "source", "area", "base", "col", "embed", "wbr", "track", "param"}
 LINK_HREF = re.compile(r"<a\b[^>]*\bhref\s*=\s*[\"']?(https?://[^\"'\s>]+)", re.I)

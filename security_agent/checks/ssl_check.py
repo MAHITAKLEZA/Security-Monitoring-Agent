@@ -1,6 +1,7 @@
 """SSL/TLS monitoring: validity, expiry, protocol versions, certificate changes, HTTPS redirect."""
 
 import hashlib
+import re
 import socket
 import ssl
 import time
@@ -12,6 +13,7 @@ from ..models import Finding, Severity as S
 
 NAME = "ssl"
 RETRY_DELAYS = (5, 20)   # seconds before the 2nd and 3rd connection attempt
+AUTO_RENEW_MAX_DAYS = 100   # certificates valid this long or less are free/auto-renewing (Let's Encrypt: 90)
 
 
 def _connect(host, port, timeout, context):
@@ -22,6 +24,11 @@ def _connect(host, port, timeout, context):
 
 def _dn(rdns):
     return ", ".join(f"{k}={v}" for rdn in rdns for k, v in rdn)
+
+
+def _org(dn):
+    match = re.search(r"organizationName=([^,]*)", dn or "")
+    return match.group(1) if match else dn
 
 
 def _accepts_legacy_tls(host, port, timeout):
@@ -82,8 +89,11 @@ def run(ctx, cfg, state):
             time.sleep(delay)
 
     findings = []
+    not_before = datetime.fromtimestamp(ssl.cert_time_to_seconds(cert["notBefore"]), timezone.utc)
     not_after = datetime.fromtimestamp(ssl.cert_time_to_seconds(cert["notAfter"]), timezone.utc)
     days_left = (not_after - datetime.now(timezone.utc)).days
+    # Free/"lifetime" SSL (Let's Encrypt, ZeroSSL, ...) issues ~90-day certificates that the host replaces on its own
+    auto_renewing = (not_after - not_before).days <= AUTO_RENEW_MAX_DAYS
     issuer = _dn(cert.get("issuer", ()))
     fingerprint = hashlib.sha256(der).hexdigest()
     evidence = {
@@ -92,6 +102,7 @@ def run(ctx, cfg, state):
         "not_before": cert.get("notBefore"),
         "not_after": not_after.isoformat(),
         "days_left": days_left,
+        "auto_renewing": auto_renewing,
         "san": [v for k, v in cert.get("subjectAltName", ()) if k == "DNS"],
         "protocol": protocol,
         "sha256": fingerprint,
@@ -101,6 +112,15 @@ def run(ctx, cfg, state):
     if days_left < 0:
         findings.append(Finding(NAME, "SSL certificate has expired", S.CRITICAL,
                                 f"Expired on {not_after:%Y-%m-%d}", "Renew the certificate immediately.", evidence))
+    elif auto_renewing and days_left <= cfg.get("auto_renew_failed_days", 3):
+        # The host normally swaps these in well before this point, so getting here means renewal has failed
+        findings.append(Finding(NAME, f"SSL auto-renewal has failed (expires in {days_left} days)", S.HIGH,
+                                f"Issued by {issuer}; expires {not_after:%Y-%m-%d} and no replacement has been installed.",
+                                "Renew the free SSL in the hosting panel and check that auto-renewal is turned on.", evidence))
+    elif auto_renewing:
+        findings.append(Finding(NAME, "SSL certificate is valid (auto-renewing)", S.INFO,
+                                f"Issued by {issuer}; expires {not_after:%Y-%m-%d} ({days_left} days) and is replaced "
+                                "automatically by the host.", evidence=evidence))
     elif days_left <= crit:
         findings.append(Finding(NAME, f"SSL certificate expires in {days_left} days", S.HIGH,
                                 f"Expires {not_after:%Y-%m-%d}", "Renew the certificate now and check auto-renewal.", evidence))
@@ -119,11 +139,12 @@ def run(ctx, cfg, state):
                                 "Disable TLS 1.0 and 1.1 (e.g. nginx: ssl_protocols TLSv1.2 TLSv1.3;)."))
 
     previous = st.get("fingerprint")
-    if previous and previous != fingerprint:
-        issuer_changed = st.get("issuer") != issuer
+    # A new certificate from the same CA is a routine renewal, so only a different CA is reported. CAs are compared by
+    # organization because they rotate intermediates between renewals (Let's Encrypt YR1 -> YR2)
+    issuer_changed = _org(st.get("issuer")) != _org(issuer)
+    if previous and previous != fingerprint and issuer_changed:
         findings.append(Finding(
-            NAME, "SSL certificate changed" + (" (different issuer)" if issuer_changed else ""),
-            S.MEDIUM if issuer_changed else S.LOW,
+            NAME, "SSL certificate changed (different issuer)", S.MEDIUM,
             f"Fingerprint {previous[:16]}... -> {fingerprint[:16]}...; issuer: {st.get('issuer')} -> {issuer}",
             "Confirm the renewal/replacement was done by your team. Unexpected certificate or issuer "
             "changes can indicate DNS hijacking or mis-issuance.",

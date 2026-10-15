@@ -37,6 +37,9 @@ checks:
     enabled: true
     expiry_warning_days: 30
     expiry_critical_days: 7
+    # Free/"lifetime" SSL (90-day certificates the host replaces on its own) is only reported when this close to
+    # expiry, i.e. when auto-renewal has failed; the two settings above apply to paid, longer certificates
+    auto_renew_failed_days: 3
 
   headers:
     enabled: true
@@ -140,6 +143,8 @@ notifications:
     min_severity: HIGH
     # Urgent (immediate) cards between the daily ones come from the security monitor every
     # defense.security_interval_minutes (30): only HIGH/CRITICAL, and never the same problem twice while it lasts.
+    # false = Teams only gets the daily card at schedule.daily_at (10:15)
+    urgent: false
 
 # Sites added from the dashboard's "Add Link" button are saved here (config.yaml is never rewritten)
 sites_file: sites.json

@@ -429,8 +429,8 @@ const CHECK_LABEL = Object.fromEntries(CHECKS.map(c => [c[0], c[1]]));
 CHECK_LABEL.availability = "Availability"; CHECK_LABEL.agent = "Agent";
 const STATE = {
   safe: { label: "Safe", cls: "safe", color: "var(--good)" },
-  warn: { label: "Warning", cls: "warn", color: "var(--warn)" },
-  risk: { label: "High Risk", cls: "risk", color: "var(--bad)" },
+  warn: { label: "Medium", cls: "warn", color: "var(--warn)" },
+  risk: { label: "High", cls: "risk", color: "var(--bad)" },
   none: { label: "Not scanned", cls: "none", color: "var(--na)" },
 };
 
@@ -441,13 +441,12 @@ const store = {
 };
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 // Decode HTML entities that arrive already-encoded from WordPress (e.g. plugin names with "&amp;"), so esc() doesn't double-encode them.
-// Short site name: the name typed in Add Website if any; otherwise the brand part of the page title ("BMR Law Offices | Your Partner..." -> "BMR Law Offices"),
-// or, when the title has no separator, the domain without its ending ("kleza.io" -> "Kleza").
+// Site name: the name typed in Add Website if any; otherwise the domain without its ending ("https://www.kleza.io/" -> "Kleza").
+// Page titles are not used: they are often SEO headlines ("Senior in home care in Birmingham, MI"), not names.
 const siteName = s => {
-  if (s.name && s.name !== new URL(s.url).hostname) return s.name;
-  const parts = dec(s.title).split(/\s+[|–—:-]\s+/);
-  if (parts.length > 1 && parts[0].trim()) return parts[0].trim();
-  const label = (new URL(s.url).hostname.replace(/^www\./, "").split(".")[0]) || s.name;
+  const host = new URL(s.url).hostname;
+  if (s.name && s.name !== host) return s.name;
+  const label = host.replace(/^www\./, "").split(".")[0];
   return label.charAt(0).toUpperCase() + label.slice(1);
 };
 const dec = s => String(s ?? "").replace(/&(amp|lt|gt|quot|#0?39|apos);/g, m => ({ "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&#039;": "'", "&apos;": "'" }[m] || m));
@@ -466,7 +465,7 @@ const pill = sev => `<span class="pill${sev === "HIGH" || sev === "CRITICAL" ? "
 const statusTag = st => `<span class="status ${STATE[st].cls}"><span class="dot" style="background:${STATE[st].color}"></span>${STATE[st].label}</span>`;
 const checkIcon = st => ({
   pass: `<span class="ci" style="color:var(--good)" title="Pass">${I(P.check, 18)}</span>`,
-  warn: `<span class="ci" style="color:#d99400" title="Warning">${I(P.warn, 18)}</span>`,
+  warn: `<span class="ci" style="color:#d99400" title="Medium">${I(P.warn, 18)}</span>`,
   fail: `<span class="ci" style="color:var(--bad)" title="Failing">${I(P.x, 18)}</span>`,
   na: `<span class="ci muted" title="Not run">—</span>`,
 }[st]);
@@ -481,7 +480,10 @@ function siteInfo(site) {
     const w = Math.max(0, ...r.findings.filter(f => f.check === k).map(f => RANK[f.severity]));
     checks[k] = w >= 3 ? "fail" : w === 2 ? "warn" : "pass";
   }
-  return { state: worst >= 3 ? "risk" : worst === 2 ? "warn" : "safe", checks };
+  // High needs a CRITICAL or at least 2 HIGH issues; a single HIGH issue counts as Medium
+  const highs = r.findings.filter(f => RANK[f.severity] === 3).length;
+  const state = worst === 4 || highs >= 2 ? "risk" : worst >= 2 ? "warn" : "safe";
+  return { state, checks };
 }
 
 /* ================= state & routing ================= */
@@ -643,7 +645,8 @@ function pageLinks(v) {
 
 function facts(r) {
   const f = r.findings;
-  const ssl = f.find(x => x.check === "ssl" && x.evidence && "days_left" in x.evidence);
+  // Days left only shows when SSL is a HIGH/CRITICAL issue; otherwise (incl. lifetime SSL) the tile shows "—"
+  const ssl = f.find(x => x.check === "ssl" && x.evidence && "days_left" in x.evidence && RANK[x.severity] >= 3);
   const dom = f.find(x => x.check === "dns" && /Domain registration expires in (-?\d+)/.test(x.title));
   const tp = f.find(x => x.check === "third_party" && /third-party domain/.test(x.title));
   const exposed = f.filter(x => x.check === "exposed_files" && RANK[x.severity] >= 1).length;
