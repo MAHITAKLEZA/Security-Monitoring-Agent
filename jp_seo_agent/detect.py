@@ -26,6 +26,7 @@ HTML_LANG = re.compile(r"<html\b[^>]*\blang\s*=\s*[\"']?([a-zA-Z]{2,3})", re.I)
 LOC = re.compile(r"<loc>\s*(?:<!\[CDATA\[)?\s*(.*?)\s*(?:\]\]>)?\s*</loc>", re.I | re.S)
 SITEMAP_DIRECTIVE = re.compile(r"(?im)^\s*sitemap\s*:\s*(\S+)")
 INLINE_SCRIPT = re.compile(r"<script\b(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.I | re.S)
+DOFOLLOW = re.compile(r"<a\b[^>]*\brel\s*=\s*[\"']?[^\"'>]*\bdofollow\b", re.I)
 # URL shapes used by spam generators: /abc12345.html, /12345678.html, /?xyz=123456
 SPAM_URL = re.compile(r"/(?:[a-z]{1,8}\d{3,}|\d{5,})\.(?:html?|php)$|[?&][a-z0-9]{2,8}=\d{4,}(?:&|$)", re.I)
 SPAM_SLUG = re.compile(r"(?<![a-z0-9])(?:" + "|".join(re.escape(t.replace(" ", "-")) for terms in CATEGORY_TERMS.values()
@@ -35,6 +36,14 @@ MIN_PAGE_TEXT = 50       # characters of visible text below which a visitor page
 MAX_LISTED = 5
 CLOAK_FIX = ("Cloaking code checks the User-Agent or referrer, usually in .htaccess, index.php, wp-config.php, a theme's "
              "functions.php or a fake plugin. The file scan (Site Guard plugin) looks for it.")
+
+
+def hidden_code(markup, block, limit=600):
+    """The hidden element as it appears in the page source: its opening tag (with the CSS that hides it) and contents."""
+    at = markup.find(block) if block else -1
+    opening = markup[markup.rfind("<", 0, at):at] if at > 0 else ""
+    code = re.sub(r"\s+", " ", opening + block).strip()
+    return code[:limit] + ("…" if len(code) > limit else "")
 
 
 class _Group:
@@ -146,12 +155,15 @@ class OutsideScan:
             kinds = spam_kinds(sc, self.expect_ja, 2, self.allowed_kinds)
             if not kinds and external:  # a single spam word next to a hidden external link is enough
                 kinds = [k for k, v in sc["categories"].items() if v and k not in self.allowed_kinds]
+            # rel="dofollow" is not a real rel value: link sellers add it, so a hidden one is spam whatever the language
+            if not kinds and external and DOFOLLOW.search(block):
+                kinds = ["link"]
             if kinds:
                 self.spam_urls.setdefault(url, "hidden spam")
                 self.group.add(f"Hidden {describe(kinds)} spam in the page", "HIGH", url,
                                "Spam text hidden from visitors with CSS but readable by search engines.",
                                "Remove it from the content or template that outputs it.",
-                               terms=terms_of(sc, kinds)[:10], links=external[:5])
+                               terms=terms_of(sc, kinds)[:10], links=external[:5], code=hidden_code(markup, block))
             elif seo_style:  # menus use display:none, not off-screen or zero-size boxes
                 hidden_links += external
         # Counted per page: injections often put each link in its own hidden box

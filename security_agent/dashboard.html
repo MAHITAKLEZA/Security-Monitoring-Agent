@@ -186,6 +186,11 @@ table.tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabula
 .expand h4 { margin: 0 0 4px; font-size: 11px; color: var(--text-2); text-transform: uppercase; letter-spacing: .05em; }
 .expand p { margin: 0 0 12px; overflow-wrap: anywhere; }
 pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px; overflow: auto; max-height: 320px; font-size: 12px; margin: 0; }
+pre.hidden-code { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 8px; }
+pre.hidden-code mark { border-radius: 3px; padding: 0 2px; color: inherit; }
+pre.hidden-code .hc-hide { background: var(--bad-soft); color: var(--bad); font-weight: 600; }
+pre.hidden-code .hc-link { background: var(--info-soft); text-decoration: underline; }
+pre.hidden-code .hc-term { background: var(--warn-soft); font-weight: 600; }
 .caret { display: inline-block; transition: transform .15s; color: var(--muted); }
 tr.open .caret { transform: rotate(90deg); }
 .recs { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
@@ -716,6 +721,7 @@ function pageCheckDetail(v, site, check) {
         <div data-update-msg="${esc(cardKey(f))}"></div>
         ${f.detail ? `<p style="margin:0 0 10px;overflow-wrap:anywhere">${esc(f.detail)}</p>` : ""}
         ${f.recommendation ? `<div class="section-title" style="margin:6px 0 4px">Recommendation</div><p style="margin:0 0 8px">${esc(f.recommendation)}</p>` : ""}
+        ${hiddenCodeHtml(f)}
         ${f.evidence && Object.keys(f.evidence).length ? `<div class="section-title" style="margin:6px 0 4px">Evidence</div><pre>${esc(JSON.stringify(f.evidence, null, 2))}</pre>` : ""}
       </div>`;
   v.innerHTML = `<a class="back" href="#/links/${encodeURIComponent(site.slug)}">${I(P.back, 16)} ${esc(site.name)}</a>
@@ -1030,6 +1036,25 @@ const wpFix = f => {
   if (/inactive plugin\(s\) installed/i.test(t)) return { label: "Delete inactive plugins", button: "Delete", action: "delete_inactive_plugins" };
   return null;
 };
+
+// Hidden spam found in a page's source: the hidden element per page, with the CSS that hides it, its links,
+// rel="dofollow" and the spam words highlighted.
+function hiddenCodeHtml(f) {
+  const pages = (f.evidence?.pages || []).filter(p => p.code);
+  if (!pages.length) return "";
+  const terms = [...new Set(pages.flatMap(p => p.terms || []))].filter(Boolean).sort((a, b) => b.length - a.length);
+  const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const hide = String.raw`(?:left|top|text-indent)\s*:\s*-\d{3,}px|display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0(?:px)?|opacity\s*:\s*0|(?:height|width)\s*:\s*[01](?:\.\d+)?px|position\s*:\s*absolute|overflow\s*:\s*hidden`;
+  const parts = [`(${hide})`, String.raw`(https?:\/\/[^\s&"']+)`, "(dofollow)"];
+  if (terms.length) parts.push(`(${terms.map(t => reEsc(esc(t))).join("|")})`);
+  const re = new RegExp(parts.join("|"), "gi");
+  const mark = code => esc(code).replace(re, (m, h, u, d) =>
+    `<mark class="${h ? "hc-hide" : u ? "hc-link" : d ? "hc-hide" : "hc-term"}">${m}</mark>`);
+  return `<div class="section-title" style="margin:6px 0 4px">Hidden code found</div>
+    ${pages.slice(0, 5).map(p => `<div class="muted" style="margin:6px 0 4px;overflow-wrap:anywhere">${esc(p.url)}</div>
+      <pre class="hidden-code">${mark(p.code)}</pre>`).join("")}
+    ${pages.length > 5 ? `<div class="muted">and ${pages.length - 5} more page(s)</div>` : ""}`;
+}
 
 // Collapse several plugin issues on the same site into one ordered "these plugins need attention" alert,
 // instead of a separate row per plugin. A single plugin issue stays a normal row.

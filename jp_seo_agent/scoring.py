@@ -30,7 +30,11 @@ CATEGORY_TERMS = {
                  # injected spam is often in other languages (Polish, German, Spanish/Portuguese, French, Italian, Russian)
                  "kasyno", "kasyna", "kasyn", "kasyno online", "kasyna online", "zakłady bukmacherskie",
                  "spielautomaten", "online spielothek", "casino en línea", "casino en linea", "casino en ligne",
-                 "apuestas", "cassino", "apostas", "scommesse", "казино", "онлайн казино", "ставки на спорт"),
+                 "apuestas", "cassino", "apostas", "scommesse", "казино", "онлайн казино", "ставки на спорт",
+                 "casino", "casinos", "roulette", "blackjack", "welcome bonus",
+                 # Czech/Slovak
+                 "kasino", "kasina", "online kasino", "ruleta", "uvítací bonus", "uvítacím bonusem", "sázky",
+                 "herní automaty"),
     "adult": ("porn", "xxx", "escort service", "escorts", "sex cams", "hentai", "adult dating", "hot singles",
               "nude girls", "onlyfans leak"),
     "scam": ("payday loans", "replica watches", "cheap jerseys", "fake id", "buy followers", "essay writing service",
