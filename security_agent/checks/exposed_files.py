@@ -125,6 +125,54 @@ def _source_maps(ctx, cfg):
                     {"source_maps": exposed})]
 
 
+# Typical web shell / malware-dropper names. A shell's rendered page or leaked source is matched by content.
+SHELL_NAMES = ["shell", "c99", "r57", "wso", "b374k", "alfa", "cmd", "up", "upload", "uploader", "x", "1", "mini",
+               "adminer", "filemanager", "fm", "indoxploit", "wp-xmlrpc", "wp-feed", "wp-tmp", "lock", "radio",
+               "about", "ghost", "sh3ll", "bypass", "marijuana", "hack", "backdoor"]
+SHELL_DIRS = ["/", "/wp-content/", "/wp-content/uploads/", "/wp-includes/", "/images/", "/uploads/", "/cache/", "/tmp/"]
+_SHELL_PAGE = _rx(r"FilesMan|c99shell|r57shell|WSO\s?\d|b374k|Weevely|IndoXploit|Alfa\s?(Team\s)?Shell|"
+                  r"Safe.?mode:|Uname:\s|Server IP:.{0,80}Your IP|Priv8|Mini Shell|Gecko Shell|"
+                  r"<title>[^<]{0,40}(web ?shell|c99|r57|WSO|file ?manager)[^<]{0,40}</title>|"
+                  r"<input[^>]+type=.?file[^>]*>.{0,200}(upload|Go!)")
+_SHELL_SOURCE = _rx(r"<\?php.{0,2000}(eval|assert)\s*\(\s*(base64_decode|gzinflate|str_rot13|\$_(POST|GET|REQUEST))|"
+                    r"(system|shell_exec|passthru|exec)\s*\(\s*\$_(POST|GET|REQUEST)")
+
+
+def _shell_candidates(cfg):
+    paths = [d + n + ".php" for d in SHELL_DIRS for n in SHELL_NAMES]
+    return paths + list(cfg.get("extra_shell_paths") or [])
+
+
+def _shell_probe(ctx, path, soft404):
+    try:
+        resp, body = ctx.fetch_limited(path, max_bytes=32768)
+    except requests.RequestException:
+        return None
+    if resp.status_code != 200 or not body or _digest(body) == soft404:
+        return None
+    if _SHELL_SOURCE(body):
+        return path, S.CRITICAL, "PHP source with a backdoor pattern is readable"
+    if _SHELL_PAGE(body):
+        return path, S.CRITICAL, "The page looks like a web shell or file manager"
+    return None
+
+
+def _web_shells(ctx, cfg, soft404):
+    hits = []
+    with ThreadPoolExecutor(max_workers=cfg.get("max_workers", 4)) as pool:
+        for hit in pool.map(lambda p: _shell_probe(ctx, p, soft404), _shell_candidates(cfg)):
+            if hit:
+                hits.append(hit)
+    if not hits:
+        return []
+    return [Finding(NAME, "Possible web shell or backdoor file on the site", S.CRITICAL,
+                    "These URLs respond like a web shell, which gives an attacker control of the site: "
+                    + "; ".join(f"{p} ({why})" for p, _, why in hits[:10]),
+                    "Do not open them. Back up the file for evidence, delete it, find how it got there (outdated "
+                    "plugin, stolen password), restore changed files from a clean source and change every password.",
+                    {"urls": [p for p, _, _ in hits]})]
+
+
 def run(ctx, cfg, state):
     try:
         _, sample = ctx.fetch_limited(f"/__secmon_{secrets.token_hex(6)}")
@@ -150,6 +198,8 @@ def run(ctx, cfg, state):
                                         hit))
 
     findings.extend(_source_maps(ctx, cfg))
+    if cfg.get("scan_web_shells", True):
+        findings.extend(_web_shells(ctx, cfg, soft404))
     if not findings:
         findings.append(Finding(NAME, "No exposed sensitive files found", S.INFO,
                                 f"{len(probes)} common sensitive paths checked."))

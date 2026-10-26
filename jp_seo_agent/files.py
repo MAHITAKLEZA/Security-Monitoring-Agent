@@ -41,6 +41,19 @@ PHP_SIGS = [
     ("long base64 blob (obfuscation)", r"['\"][A-Za-z0-9+/]{3000,}={0,2}['\"]", "MEDIUM"),
     ("hex-escaped string (obfuscation)", r"(?:\\x[0-9a-fA-F]{2}){60,}", "MEDIUM"),
     ("create_function() (deprecated, used by malware)", r"\bcreate_function\s*\(", "MEDIUM"),
+    ("file written from request data", r"\b(?:file_put_contents|fwrite|fputs)\s*\([^;]{0,120}\$_(?:POST|GET|REQUEST|COOKIE)",
+     "CRITICAL"),
+    ("file upload saved without checks", r"move_uploaded_file\s*\(\s*\$_FILES\s*\[[^\]]+\]\s*\[\s*['\"]tmp_name['\"]\s*\]"
+     r"\s*,\s*[^;]*\$_FILES\s*\[[^\]]+\]\s*\[\s*['\"]name['\"]", "HIGH"),
+    ("callback run on request data", r"\b(?:call_user_func(?:_array)?|array_map|array_filter|usort|uasort|uksort|"
+     r"register_shutdown_function|forward_static_call)\s*\(\s*\$_(?:POST|GET|REQUEST|COOKIE)", "CRITICAL"),
+    ("eval of a decoded variable", r"\$(\w+)\s*=\s*(?:base64_decode|gzinflate|gzuncompress|str_rot13|hex2bin|strrev)"
+     r"\s*\([^;]{0,3000};[^{}]{0,300}\beval\s*\(\s*\$\1\b", "CRITICAL"),
+    ("backtick shell command from request data", r"`[^`\n]{0,80}\$_(?:POST|GET|REQUEST|COOKIE)[^`\n]{0,80}`", "CRITICAL"),
+    ("errors silenced with remote include", r"@\s*(?:include|require)(?:_once)?\s*\(?\s*['\"]?https?://", "CRITICAL"),
+    ("variable function built from character codes", r"(?:chr\s*\(\s*\d+\s*\)\s*\.\s*){6,}", "HIGH"),
+    ("known web shell (more families)", r"Weevely|China Chopper|Mini Shell|Gecko Shell|PHPSpy|Dx\.?shell|webshell|"
+     r"Priv8|Safe.?mode:\s|Uname:\s", "HIGH"),
 ]
 HTACCESS_SIGS = [
     ("auto_prepend_file / auto_append_file", r"auto_(?:prepend|append)_file", "CRITICAL"),
@@ -52,6 +65,12 @@ HTACCESS_SIGS = [
      r"\.(?:jpe?g|png|gif|ico|txt|html?)", "HIGH"),
     (".html URLs rewritten to a PHP script (spam generator)", r"RewriteRule\s+\S*\\?\.html?\$?\S*\s+\S*\.php\?", "HIGH"),
 ]
+# Malicious uploads that hide from the plain ".php" test: a script with a second extension (shell.php.jpg, run by
+# servers that map any ".php." name to PHP), pages and programs dropped among the media, and PHP inside a real image.
+MEDIA_EXT = re.compile(r"\.(?:jpe?g|png|gif|webp|bmp|ico|tiff?)$", re.I)
+DISGUISED_EXT = re.compile(r"\.(?:php\d?|phtml|phar|pht|phps|inc|cgi|pl|py|sh|asp|aspx|jsp|exe|dll)\.[a-z0-9]{1,5}$", re.I)
+UPLOAD_PAGE_EXT = re.compile(r"\.(?:html?|xhtml|js|mjs|exe|dll|msi|bat|cmd|scr|vbs|hta|jar|sh)$", re.I)
+PHP_OPEN_TAG = re.compile(r"<\?php|<\?=", re.I)
 PHP_SIGS = [(n, re.compile(p, re.I), s) for n, p, s in PHP_SIGS]
 HTACCESS_SIGS = [(n, re.compile(p, re.I), s) for n, p, s in HTACCESS_SIGS]
 EXTERNAL_REWRITE = re.compile(r"RewriteRule\s+\S+\s+(https?://[^\s\[]+)", re.I)
@@ -258,12 +277,24 @@ class FileScan:
         if uploads_php:
             self.add("PHP files in the uploads folder", "HIGH", uploads_php,
                      "The uploads folder should only hold media:", "Almost always a web shell. Quarantine them.")
+        uploads = [p for p in files if under(p, "uploads_dir") and inside(p)]
+        disguised = sorted(p for p in uploads if DISGUISED_EXT.search(p))
+        if disguised:
+            self.add("Disguised script in the uploads folder", "HIGH", disguised,
+                     "Script names with a second extension, a common way to slip a web shell past upload filters:",
+                     "Almost always a web shell. Quarantine them and find out how they were uploaded.")
+        upload_pages = sorted(p for p in uploads if UPLOAD_PAGE_EXT.search(p))
+        if upload_pages:
+            self.add("Web pages or programs in the uploads folder", "MEDIUM", upload_pages,
+                     "The uploads folder should only hold media; attackers host phishing pages and malware here:",
+                     "Open each file; delete it if your team didn't upload it.")
+        self.issues.update(disguised_uploads=disguised, upload_pages=upload_pages)
         mu = sorted(p for p in files if under(p, "mu_plugins_dir") and CODE_EXT.search(p) and inside(p))
         if mu:
             self.add("Must-use plugins installed", "LOW", mu, "Always loaded and hidden from the plugin list:",
                      "Confirm each one; attackers use mu-plugins for persistence.")
         self.issues.update(uploads_php=uploads_php, mu_plugins=mu, plugins_dir=dirs["plugins_dir"])
-        for p in uploads_php + mu:
+        for p in uploads_php + disguised + mu:
             to_read.setdefault(p, "location")
         for p in files:
             name = p.rsplit("/", 1)[-1].lower()
@@ -295,6 +326,13 @@ class FileScan:
                                                                in (".htaccess", ".user.ini", "php.ini")):
                     to_read.setdefault(p, "changed since the trusted baseline")
 
+        # Uploaded images are checked for PHP hidden inside them: new ones in a monitor cycle, recent ones in a scan
+        recent_days = int(self.cfg.get("recent_days", 7))
+        cutoff = (status.get("time") or time.time()) - recent_days * 86400
+        images = [p for p in uploads if MEDIA_EXT.search(p) and (focus is not None or (files[p].get("m") or 0) >= cutoff)]
+        for p in sorted(images, key=lambda p: -(files[p].get("m") or 0))[: int(self.cfg.get("max_image_reads", 40))]:
+            to_read.setdefault(p, "uploaded image")
+
         self.scan_contents(dict(list(to_read.items())[: int(self.cfg.get("max_file_reads", 80))]))
         return self
 
@@ -305,8 +343,11 @@ class FileScan:
             if text is None:
                 continue
             name = path.rsplit("/", 1)[-1].lower()
-            sigs = HTACCESS_SIGS if name in (".htaccess", ".user.ini", "php.ini") else PHP_SIGS
+            media = bool(MEDIA_EXT.search(name))   # binary: only a PHP tag means something
+            sigs = [] if media else HTACCESS_SIGS if name in (".htaccess", ".user.ini", "php.ini") else PHP_SIGS
             found = []
+            if media and not name.endswith(".ico") and (m := PHP_OPEN_TAG.search(text)):
+                found.append(("PHP code hidden in an uploaded image", "CRITICAL", text[max(m.start() - 150, 0):m.end() + 300]))
             for label, regex, severity in sigs:
                 m = regex.search(text)
                 if m:
@@ -318,7 +359,7 @@ class FileScan:
                         break
             if name.endswith(".ico") and "<?php" in text:
                 found.append(("PHP code hidden in an .ico file", "CRITICAL", text[:300]))
-            if "/languages/" not in path:
+            if "/languages/" not in path and not media:
                 sc = score(text)
                 kinds = spam_kinds(sc, self.expect_ja)
                 if kinds:

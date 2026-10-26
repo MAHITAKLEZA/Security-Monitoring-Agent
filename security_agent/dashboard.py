@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 import requests
 
 from .checks import ssh_inside
-from .checks.wordpress import credentials as wp_credentials
+from .checks.wordpress import _read_secret_file, credentials as wp_credentials
 from .ignored import apply_ignored, ignore_key, load_ignored, save_ignored
 from .config import _slug, load_managed_sites, resolve_targets, save_managed_sites
 from .excel import to_xlsx
@@ -66,6 +66,34 @@ def _read_history(path):
     return rows[-MAX_HISTORY:]
 
 
+def _with_runs(rows, site_dir):
+    """Attach each history row's report folder (reports/<site>/<YYYYMMDD-HHMMSS>/) and the report files in it."""
+    for row in rows:
+        try:
+            started = datetime.fromisoformat(str(row.get("started_at"))).astimezone(timezone.utc)
+        except ValueError:
+            continue
+        run = started.strftime("%Y%m%d-%H%M%S")
+        try:
+            files = sorted(p.name for p in (site_dir / run).iterdir() if p.name.startswith("report."))
+        except OSError:
+            continue
+        if files:
+            row["run"], row["files"] = run, files
+    return rows
+
+
+def _login_info(target):
+    """What the edit-credentials form needs to show: the kind of inside scan and the username (never a password)."""
+    ssh = target["checks"].get("malware", {}).get("ssh")
+    if ssh:
+        return {"kind": "ssh", "username": ssh.get("username", ""), "editable": bool(target.get("managed"))}
+    wp = target["checks"].get("wordpress", {})
+    auth = wp_credentials(wp) if wp.get("enabled") else None
+    return {"kind": "wordpress", "username": auth[0] if auth else wp.get("username", ""), "has_password": bool(auth),
+            "editable": True}
+
+
 def collect_data(config, targets, server=False, scan_status=None):
     out = Path(config["report"]["output_dir"])
     ignored = load_ignored(config)
@@ -79,8 +107,9 @@ def collect_data(config, targets, server=False, scan_status=None):
             "url": t["url"],
             "pages": t.get("pages", ["/"]),
             "managed": t.get("managed", False),
+            "login": _login_info(t) if server else None,
             "latest": apply_ignored(_read_json(site_dir / "latest.json"), ignored.get(t["slug"], {})),
-            "history": _read_history(site_dir / "history.jsonl"),
+            "history": _with_runs(_read_history(site_dir / "history.jsonl"), site_dir),
         })
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -280,6 +309,70 @@ class DashboardServer:
         sites = [s for s in load_managed_sites(self.config)
                  if s["url"].rstrip("/").lower() != target["url"].rstrip("/").lower()]
         save_managed_sites(self.config, sites)
+        self._reload_targets()
+
+    def get_credentials(self, slug):
+        """The saved login of a site, for the edit form. Served only to a logged-in dashboard session and never put in
+        the dashboard page's data."""
+        target = next((t for t in self.targets if t["slug"] == slug), None)
+        if target is None:
+            raise ValueError("Unknown site")
+        ssh = target["checks"].get("malware", {}).get("ssh")
+        if ssh:
+            try:
+                key = Path(ssh["key_file"]).read_text(encoding="utf-8")
+            except (OSError, KeyError):
+                key = ""
+            return {"kind": "ssh", "username": ssh.get("username", ""), "private_key": key}
+        wp = target["checks"].get("wordpress", {})
+        auth = wp_credentials(wp) if wp.get("enabled") else None
+        return {"kind": "wordpress", "username": auth[0] if auth else wp.get("username", ""),
+                "password": auth[1] if auth else ""}
+
+    def update_credentials(self, slug, wp_username=None, wp_password=None, ssh=None):
+        """Change the inside-scan login of any site. WordPress: the username and application password go to the
+        site's secrets file (a blank password keeps the saved one). SSH: the login is tested, then the key is replaced
+        (sites added from the dashboard only, since the pinned host key is stored with the site)."""
+        target = next((t for t in self.targets if t["slug"] == slug), None)
+        if target is None:
+            raise ValueError("Unknown site")
+        sites = load_managed_sites(self.config)
+        entry = next((s for s in sites if s["url"].rstrip("/").lower() == target["url"].rstrip("/").lower()), None)
+        if ssh:
+            if not target.get("managed") or entry is None:
+                raise ValueError("This site is defined in config.yaml; change its SSH login there")
+            old = (entry.get("checks") or {}).get("malware", {}).get("ssh", {})
+            ssh = {**{"host": old.get("host"), "port": old.get("port"), "web_root": old.get("web_root")},
+                   **{k: v for k, v in ssh.items() if v}}
+            if not (ssh.get("private_key") or ssh.get("key_id")) and old.get("key_file"):
+                ssh["private_key"] = Path(old["key_file"]).read_text(encoding="utf-8")
+            probe_entry = {}
+            self._attach_ssh(probe_entry, target["url"], slug, ssh)
+            entry["checks"] = {**(entry.get("checks") or {}), **probe_entry["checks"]}
+            if "wordpress" in entry["checks"]:   # switched to SSH: the WordPress login is no longer used
+                entry["checks"]["wordpress"] = {**entry["checks"]["wordpress"], "enabled": False}
+        else:
+            wp_cfg = target["checks"].get("wordpress", {})
+            wp_username, wp_password = (wp_username or "").strip(), (wp_password or "").strip()
+            secret_file = wp_cfg.get("app_password_file") or (Path("secrets") / f"{slug}.env").as_posix()
+            try:
+                saved = _read_secret_file(secret_file)
+            except OSError:
+                saved = {}
+            username = wp_username or wp_cfg.get("username") or saved.get("username", "")
+            password = wp_password or saved.get("password", "")
+            if not (username and password):
+                raise ValueError("Enter the username and the application password")
+            path = Path(secret_file)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"username={username}\npassword={password}\n", encoding="utf-8")
+            if entry is not None:
+                checks = entry.setdefault("checks", {})
+                checks["wordpress"] = {**checks.get("wordpress", {}), "enabled": True, "username": username,
+                                       "app_password_file": path.as_posix()}
+                checks.get("malware", {}).pop("ssh", None)   # switched to WordPress: stop using the SSH login
+        if entry is not None:
+            save_managed_sites(self.config, sites)
         self._reload_targets()
 
     def set_ignored(self, slug, title=None, check=None, severity=None, key=None, ignore=True):
@@ -802,6 +895,13 @@ class DashboardServer:
                                                body.get("wp_username"), body.get("wp_password"), ssh)
                         scan = server.start_scan(slug) if body.get("scan") else (False, "not requested")
                         return self._json(201, {"ok": True, "slug": slug, "scan_started": scan[0]})
+                    if path == "/api/sites/credentials/get":
+                        return self._json(200, {"ok": True, **server.get_credentials(body.get("slug"))})
+                    if path == "/api/sites/credentials":
+                        ssh = body.get("ssh") if isinstance(body.get("ssh"), dict) else None
+                        server.update_credentials(body.get("slug"), body.get("wp_username"), body.get("wp_password"), ssh)
+                        scan = server.start_scan(body.get("slug")) if body.get("scan") else (False, "not requested")
+                        return self._json(200, {"ok": True, "scan_started": scan[0]})
                     if path == "/api/ssh/keygen":
                         key_id, public = server.generate_ssh_key()
                         return self._json(200, {"ok": True, "key_id": key_id, "public_key": public})

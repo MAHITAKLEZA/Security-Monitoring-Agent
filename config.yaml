@@ -127,13 +127,12 @@ report:
   max_parallel_sites: 2
 
 schedule:
-  # The dashboard server (--serve) scans every site once a day at this time (HH:MM, 24-hour clock),
-  # then sends the Teams card if a webhook is set in the dashboard (Settings > Teams alerts)
-  daily_at: "10:15"
+  # The dashboard server (--serve) scans every site every interval_minutes. Teams gets each new HIGH/CRITICAL
+  # problem once, right after the scan that finds it (webhook: dashboard Settings > Teams alerts).
+  # To scan once a day instead, add  daily_at: "10:15"  (HH:MM, 24-hour clock); the daily Teams card is sent then.
+  interval_minutes: 30
   # Time zone for daily_at (IANA name). Empty = the server's local time, which is often UTC on a hosted server.
   timezone: Asia/Kolkata
-  # Used with --loop instead: minutes between scans
-  interval_minutes: 60
 
 # Daily Teams card: one card after the scheduled scan, listing only sites with findings at or above min_severity.
 # The webhook URL is set from the dashboard (Settings > Teams alerts) and saved to webhook_url_file (git-ignored).
@@ -141,10 +140,9 @@ notifications:
   teams:
     webhook_url_file: secrets/teams.env
     min_severity: HIGH
-    # Urgent (immediate) cards between the daily ones come from the security monitor every
-    # defense.security_interval_minutes (30): only HIGH/CRITICAL, and never the same problem twice while it lasts.
-    # false = Teams only gets the daily card at schedule.daily_at (10:15)
-    urgent: false
+    # Immediate cards: only HIGH/CRITICAL, after each scan, and never the same problem twice while it lasts.
+    # false = Teams only gets the daily card (needs schedule.daily_at)
+    urgent: true
 
 # Sites added from the dashboard's "Add Link" button are saved here (config.yaml is never rewritten)
 sites_file: sites.json

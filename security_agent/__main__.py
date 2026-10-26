@@ -82,8 +82,13 @@ def main(argv=None):
         return 0
     if args.serve:
         server = DashboardServer(agent, config, targets, port=args.port)
-        if args.loop:
-            threading.Thread(target=agent.run_forever, args=(interval,), daemon=True).start()
+        if args.loop or not daily_at:
+            # Every `interval` minutes, through the server so the dashboard shows progress and scans never overlap.
+            # Teams gets each new HIGH/CRITICAL problem once, right after the scan that finds it.
+            config["schedule"].update(interval_minutes=interval, active=True, mode="interval")
+            threading.Thread(target=agent.run_interval, args=(interval, lambda: server.start_scan(None)),
+                             daemon=True).start()
+            print(f"Scanning all sites every {interval:g} minute(s)", flush=True)
         elif daily_at:
             config["schedule"].update(active=True, mode="daily")
             # Runs through the server so the dashboard shows progress and never overlaps a scan started from the page

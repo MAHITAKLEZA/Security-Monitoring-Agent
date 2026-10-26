@@ -299,7 +299,10 @@ a.kc:hover { border-color: var(--accent); text-decoration: none; }
           <div class="subtitle">Monitor the security of your websites in one place.</div>
         </div>
       </a>
-      <a class="btn icon-btn" id="settingsBtn" href="#/settings" aria-label="Settings" title="Settings"></a>
+      <div style="display:flex;gap:8px;align-items:center">
+        <a class="btn" id="historyBtn" href="#/history" title="Every scan run and its saved report">Scan history</a>
+        <a class="btn icon-btn" id="settingsBtn" href="#/settings" aria-label="Settings" title="Settings"></a>
+      </div>
     </header>
     <div id="banner"></div>
     <main id="view"></main>
@@ -315,7 +318,7 @@ a.kc:hover { border-color: var(--accent); text-decoration: none; }
     <div class="modal-b" id="addBody">
       <div class="field"><label for="fUrl">Website link</label><input id="fUrl" type="text" placeholder="https://example.com" autocomplete="off" required>
         <div class="hint">Any website. Only add sites you own or are authorized to test.</div></div>
-      <div class="field"><label for="fName">Website name <span class="muted">(optional)</span></label><input id="fName" type="text" placeholder="e.g. Kleza" maxlength="60" autocomplete="off"></div>
+      <div class="field"><label for="fName">Website name <span class="muted">(filled in from the link, you can change it)</span></label><input id="fName" type="text" placeholder="e.g. Kleza" maxlength="60" autocomplete="off"></div>
       <div class="field"><label>Inside scan <span class="muted">(optional)</span></label>
         <div class="seg" role="group" aria-label="Website type"><button type="button" id="tWp" aria-pressed="true">WordPress</button><button type="button" id="tSsh" aria-pressed="false">Other site (SSH)</button></div>
         <div class="hint">WordPress sites log in with an application password. Any other site (React, HTML, PHP, Laravel, Node…) can be scanned from inside with an SSH key.</div></div>
@@ -345,6 +348,28 @@ a.kc:hover { border-color: var(--accent); text-decoration: none; }
     <div class="modal-f">
       <button class="btn" type="button" id="addCancel">Cancel</button>
       <button class="btn primary" type="submit" id="addSubmit">Add Website</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="credDlg">
+  <form id="credForm" method="dialog">
+    <div class="modal-h"><h3 id="credTitle">SSH access</h3></div>
+    <div class="modal-b">
+      <div class="hint">Gives the agent read-only access to the website's files, so it can read every file and report dangerous or newly added ones. Replaces the site's current inside-scan login when you save.</div>
+      <div id="credSsh">
+        <div class="field"><label for="cSshUser">SSH username</label><input id="cSshUser" type="text" placeholder="e.g. u123456789 or kleza_scan" autocomplete="off">
+          <div class="hint">From the hosting panel's SSH Access page.</div></div>
+        <div class="field"><label for="cSshKey">Private key</label>
+          <textarea id="cSshKey" rows="5" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;…&#10;-----END OPENSSH PRIVATE KEY-----" autocomplete="off" spellcheck="false"></textarea>
+          <div class="hint">A key without a passphrase. The login is tested before it is saved. Stored in a local <code>secrets/</code> file, never in reports.</div></div>
+      </div>
+      <div class="hint hidden" id="credLocked">This site's SSH login is defined in <code>config.yaml</code>; change it there.</div>
+      <label class="check-row"><input type="checkbox" id="cScan" checked> Scan after saving</label>
+      <div class="form-err" id="credErr" role="alert"></div>
+    </div>
+    <div class="modal-f">
+      <button class="btn" type="button" id="credCancel">Cancel</button>
+      <button class="btn primary" type="submit" id="credSave">Save</button>
     </div>
   </form>
 </dialog>
@@ -565,12 +590,14 @@ function linksTable(sites, opts = {}) {
       <td class="muted" style="white-space:nowrap">${s.latest ? esc(fmtShortDT(s.latest.started_at)) : "Never"}</td>
       <td style="white-space:nowrap"><a class="btn outline sm" href="#/links/${encodeURIComponent(s.slug)}">View Report</a>
         ${DATA.server ? `<button class="btn sm" data-scan="${esc(s.slug)}" title="Scan now" aria-label="Scan ${esc(s.name)} now" ${scanning() ? "disabled" : ""}>${I(P.refresh, 14)}</button>` : ""}
+        ${DATA.server ? `<button class="btn sm" data-creds="${esc(s.slug)}" title="Give or change SSH access" aria-label="SSH access for ${esc(s.name)}">SSH Access</button>` : ""}
         ${DATA.server && s.managed ? `<button class="btn sm danger" data-remove="${esc(s.slug)}" data-name="${esc(s.name)}" title="Remove ${esc(s.name)}" aria-label="Remove ${esc(s.name)}" ${scanning() ? "disabled" : ""}>${I(P.trash, 14)}</button>` : ""}</td>
     </tr>`; }).join("")}</tbody></table></div>`;
 }
 const scanning = () => !!DATA.scan_status?.running;
-function bindScanButtons(root) { root.querySelectorAll("[data-scan]").forEach(b => b.onclick = e => { e.preventDefault(); startScan(b.dataset.scan || null); }); }
-function bindRemoveButtons(root) { root.querySelectorAll("[data-remove]").forEach(b => b.onclick = e => { e.preventDefault(); removeSite(b.dataset.remove, b.dataset.name); }); }
+function bindScanButtons(root) { root.querySelectorAll("[data-scan]").forEach(b => b.onclick = e => { e.preventDefault(); startScan(b.dataset.scan || null); }); bindCredButtons(root); }
+function bindCredButtons(root) { root.querySelectorAll("[data-creds]").forEach(b => b.onclick = e => { e.preventDefault(); openCreds(b.dataset.creds); }); }
+function bindRemoveButtons(root) { bindCredButtons(root); root.querySelectorAll("[data-remove]").forEach(b => b.onclick = e => { e.preventDefault(); removeSite(b.dataset.remove, b.dataset.name); }); }
 async function removeSite(slug, name) {
   if (!DATA.server) return;
   if (!confirm(`Remove ${name || slug} from monitoring?\n\nIt stops being scanned. Its past reports and history stay on disk.`)) return;
@@ -664,6 +691,29 @@ function facts(r) {
   </div>`;
 }
 
+// Scan history tab: every past run of every site (or one site), newest first, with the report files each run saved
+let historySite = "";
+function pageHistory(v) {
+  const rows = DATA.sites.filter(s => !historySite || s.slug === historySite)
+    .flatMap(s => (s.history || []).map(r => ({ site: s, r })))
+    .sort((a, b) => +new Date(b.r.started_at) - +new Date(a.r.started_at));
+  const link = ({ site, r }, ext, label) => r.files?.includes("report." + ext)
+    ? `<a class="btn outline sm" href="${fileUrl(`${site.slug}/${r.run}/report.${ext}`)}" ${ext === "xlsx" ? `download="security-report-${esc(site.slug)}-${esc(r.run)}.xlsx"` : 'target="_blank"'}>${label}</a>` : "";
+  const chip = (slug, label) => `<button type="button" class="chip" data-hsite="${esc(slug)}"${slug === historySite ? ' style="border-color:var(--accent);color:var(--accent);font-weight:600"' : ""}>${esc(label)}</button>`;
+  v.innerHTML = `<a class="back" href="#/links">${I(P.back, 16)} Websites</a>
+    <div class="section-title" style="margin-top:0">Scan history <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">— ${rows.length} run${rows.length === 1 ? "" : "s"}, each with its saved report</span></div>
+    <div class="filters" aria-label="Website">${chip("", "All websites")}${DATA.sites.map(s => chip(s.slug, siteName(s))).join("")}</div>
+    ${rows.length ? `<div class="tbl-wrap mt"><table class="tbl"><thead><tr><th>Website</th><th>Run</th><th>Status</th><th class="c">Score</th>
+      ${["CRITICAL", "HIGH", "MEDIUM", "LOW"].map(s => `<th class="c">${esc(s[0] + s.slice(1).toLowerCase())}</th>`).join("")}<th>Report</th></tr></thead>
+    <tbody>${rows.map(x => `<tr><td><a class="site-link" href="#/links/${encodeURIComponent(x.site.slug)}">${esc(siteName(x.site))}</a></td>
+      <td style="white-space:nowrap">${esc(fmtDate(x.r.started_at))}<div class="muted" style="font-size:12px">${esc(ago(x.r.started_at))}</div></td>
+      <td>${esc(x.r.security_status || "—")}</td><td class="c">${x.r.risk_score ?? "—"}</td>
+      ${["CRITICAL", "HIGH", "MEDIUM", "LOW"].map(s => `<td class="c">${x.r.severity_counts?.[s] ?? 0}</td>`).join("")}
+      <td style="white-space:nowrap">${link(x, "md", "Report")} ${link(x, "json", "JSON")} ${link(x, "xlsx", "Excel")}${x.r.run ? "" : '<span class="muted">not kept</span>'}</td></tr>`).join("")}</tbody></table></div>`
+      : '<div class="card empty mt"><h3>No scans yet</h3>Runs appear here after the first scan.</div>'}`;
+  v.querySelectorAll("[data-hsite]").forEach(b => b.onclick = () => { historySite = b.dataset.hsite; pageHistory(v); });
+}
+
 function pageSite(v, site) {
   const r = site.latest, inf = siteInfo(site);
   const head = `<a class="back" href="#/links">${I(P.back, 16)} All links</a>
@@ -671,6 +721,7 @@ function pageSite(v, site) {
       <div><h2>${esc(site.name)}</h2><a href="${esc(site.url)}" target="_blank" rel="noopener noreferrer">${esc(site.url)}</a></div>
       ${statusTag(inf.state)}
       <div class="actions">
+        ${DATA.server ? `<button class="btn sm" data-creds="${esc(site.slug)}">Edit credentials</button>` : ""}
         ${r ? `<a class="btn sm" href="${fileUrl(site.slug + "/latest.md")}" target="_blank">${I(P.download, 14)} Report (.md)</a>
                <a class="btn sm" href="${fileUrl(site.slug + "/latest.json")}" target="_blank">${I(P.download, 14)} JSON</a>
                <a class="btn sm" href="${fileUrl(site.slug + "/latest.xlsx")}" download="security-report-${esc(site.slug)}.xlsx">${I(P.download, 14)} Excel</a>` : ""}      </div></div></div>`;
@@ -688,6 +739,9 @@ function pageSite(v, site) {
       ${["CRITICAL", "HIGH", "MEDIUM", "LOW"].map(s => `<div class="card kpi"><div class="label">${pill(s)}</div>
         <div class="value">${c[s] || 0}</div><div class="sub">${delta(c[s] || 0, prev?.severity_counts?.[s], true) || "findings"}</div></div>`).join("")}
     </div>
+    ${r.findings.some(f => f.check === "compromise" && (f.evidence?.pages || []).some(p => p.code)) ? `
+    <a class="card mt" href="#/links/${encodeURIComponent(site.slug)}/compromise" style="display:block;border-color:var(--bad);color:inherit;text-decoration:none">
+      <b style="color:var(--bad)">Hidden spam code found</b> in Spam &amp; Compromise &mdash; open it to see the injected code and the pages it is on.</a>` : ""}
     ${facts(r)}
     <div class="section-title">Security checks <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">— open a check to see its findings</span></div>
     <div class="grid modules">${CHECKS.map(([k, label, , ico, desc]) => {
@@ -732,9 +786,9 @@ function pageCheckDetail(v, site, check) {
       <div class="actions">${status}</div>
     </div></div>
     <div class="filters mt" aria-label="Other checks">${CHECKS.map(([kk, ll]) => `<a class="chip" href="#/links/${encodeURIComponent(site.slug)}/${kk}"${kk === k ? ' style="border-color:var(--accent);color:var(--accent);font-weight:600"' : ""}>${esc(ll)}</a>`).join("")}</div>
-    ${DATA.server ? '<div id="defense" class="mt"></div><div id="remediation" class="mt"></div>' : ""}
     ${shown.length ? `<div class="grid mt" style="gap:12px">${shown.map(findingCard).join("")}</div>`
-      : `<div class="card empty mt"><h3>${ran ? "No issues found" : "Not run in the latest scan"}</h3>${ran ? "This check passed with nothing to report." : "This check was not part of the latest scan."}</div>`}`;
+      : `<div class="card empty mt"><h3>${ran ? "No issues found" : "Not run in the latest scan"}</h3>${ran ? "This check passed with nothing to report." : "This check was not part of the latest scan."}</div>`}
+    ${DATA.server ? '<div id="defense" class="mt"></div><div id="remediation" class="mt"></div>' : ""}`;
   // Remove / Delete: the server makes the change through the site's REST API with the saved application password;
   // on success the card goes away and the rescan it starts confirms it
   const runUpdate = async b => {
@@ -1238,6 +1292,8 @@ function render() {
   const sb = document.getElementById("settingsBtn");
   sb.innerHTML = I(P.gear, 16);
   page === "settings" ? sb.setAttribute("aria-current", "page") : sb.removeAttribute("aria-current");
+  const hb = document.getElementById("historyBtn");
+  page === "history" ? hb.setAttribute("aria-current", "page") : hb.removeAttribute("aria-current");
   hideTip();
   const v = document.getElementById("view");
   if (page === "links" && arg) {
@@ -1245,7 +1301,7 @@ function render() {
     if (!site) v.innerHTML = '<div class="card empty"><h3>Link not found</h3><a href="#/links">Back to all links</a></div>';
     else if (sub) pageCheckDetail(v, site, sub);
     else pageSite(v, site);
-  } else ({ links: pageLinks, settings: pageSettings }[page] || pageLinks)(v);
+  } else ({ links: pageLinks, settings: pageSettings, history: pageHistory }[page] || pageLinks)(v);
   renderBanner();
 }
 
@@ -1298,6 +1354,7 @@ function openAdd() {
   document.getElementById("addSubmit").classList.toggle("hidden", !DATA.server);
   document.getElementById("formErr").textContent = "";
   document.getElementById("addForm").reset();
+  nameEdited = false;
   setSiteType(false);
   dlg.showModal();
   if (DATA.server) document.getElementById("fUrl").focus();
@@ -1310,6 +1367,15 @@ function setSiteType(ssh) {
   $id("wpFields").classList.toggle("hidden", ssh); $id("sshFields").classList.toggle("hidden", !ssh);
 }
 $id("tWp").onclick = () => setSiteType(false); $id("tSsh").onclick = () => setSiteType(true);
+// The name follows the link while it is typed (kleza.io -> Kleza) until the user types their own name
+let nameEdited = false;
+function nameFromUrl(value) {
+  const host = value.trim().replace(/^[a-z]+:\/\//i, "").split(/[\/?#:]/)[0].replace(/^www\./i, "");
+  const label = host.split(".")[0];
+  return host.includes(".") && label ? label.charAt(0).toUpperCase() + label.slice(1) : "";
+}
+$id("fName").addEventListener("input", () => { nameEdited = $id("fName").value !== ""; });
+$id("fUrl").addEventListener("input", () => { if (!nameEdited) $id("fName").value = nameFromUrl($id("fUrl").value); });
 document.getElementById("addCancel").onclick = () => dlg.close();
 document.getElementById("addForm").addEventListener("submit", async e => {
   e.preventDefault();
@@ -1328,6 +1394,42 @@ document.getElementById("addForm").addEventListener("submit", async e => {
   await refresh();
   if (res.data.scan_started) pollWhileRunning();
   go("#/links/" + encodeURIComponent(res.data.slug));
+});
+
+const credDlg = $id("credDlg");
+let credSlug = null, credLogin = null;
+async function openCreds(slug) {
+  const site = DATA.sites.find(s => s.slug === slug); if (!site) return;
+  const login = site.login || { kind: "wordpress", username: "", editable: true };
+  credSlug = slug; credLogin = login;
+  const locked = login.kind === "ssh" && !login.editable;   // SSH login set in config.yaml
+  $id("credTitle").textContent = `SSH access: ${siteName(site)}`;
+  $id("cSshUser").value = login.kind === "ssh" ? login.username || "" : ""; $id("cSshKey").value = "";
+  $id("credSsh").classList.toggle("hidden", locked);
+  $id("credLocked").classList.toggle("hidden", !locked);
+  $id("credSave").classList.toggle("hidden", locked);
+  $id("credErr").textContent = "";
+  credDlg.showModal();
+  // The saved login is fetched when the form opens (it is never part of the page data) and filled in to edit.
+  if (login.kind !== "ssh") return;
+  const res = await api("/api/sites/credentials/get", { slug });
+  if (!res.ok || slug !== credSlug || res.data.kind !== "ssh") return;
+  $id("cSshUser").value = res.data.username || ""; $id("cSshKey").value = res.data.private_key || "";
+}
+$id("credCancel").onclick = () => credDlg.close();
+$id("credForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const btn = $id("credSave"), err = $id("credErr"), label = btn.textContent;
+  btn.disabled = true; err.textContent = "";
+  const body = { slug: credSlug, scan: $id("cScan").checked };
+  body.ssh = { username: $id("cSshUser").value, private_key: $id("cSshKey").value };
+  btn.textContent = "Connecting…";
+  const res = await api("/api/sites/credentials", body);
+  btn.disabled = false; btn.textContent = label;
+  if (!res.ok) { err.textContent = res.data.message || "Could not save the credentials"; return; }
+  credDlg.close();
+  await refresh();
+  if (res.data.scan_started) pollWhileRunning();
 });
 
 let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(render, 150); });

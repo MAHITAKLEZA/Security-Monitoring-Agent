@@ -229,6 +229,15 @@ class SecurityMonitoringAgent:
             except Exception:
                 log.exception("Scheduled scan failed")
 
+    def run_interval(self, interval_minutes, job):
+        """Run `job` now and then every `interval_minutes` (the dashboard's scan, so scans never overlap)."""
+        while True:
+            try:
+                job()
+            except Exception:
+                log.exception("Scheduled scan failed")
+            time.sleep(max(1, interval_minutes) * 60)
+
     def run_forever(self, interval_minutes):
         log.info("Monitoring %d site(s) every %s minute(s). Ctrl+C to stop.", len(self.targets), interval_minutes)
         while True:

@@ -140,20 +140,28 @@ def send_daily_card(config, targets, test=False):
         return False, "No Teams webhook URL set"
     threshold = S.parse(_cfg(config).get("min_severity", "HIGH"))
     now = datetime.now(schedule_tz(config["schedule"].get("timezone")))
-    rows = _site_alerts(config, targets, threshold)
+    all_rows = _site_alerts(config, targets, threshold)
+    # Only what hasn't been reported yet: not in the last daily card and not already sent as an urgent alert
+    previous, sent = _previous_keys(config), _load_sent(config)
+    rows = []
+    for r in all_rows:
+        fresh = [f for f in r["alerts"] if (previous is None or _key(r, f) not in previous)
+                 and _problem_key(r["slug"], f["check"], f["title"]) not in sent]
+        if fresh:
+            rows.append({**r, "alerts": fresh})
     if rows:
-        card = build_card(rows, len(targets), _previous_keys(config), now)
+        card = build_card(rows, len(targets), None, now)
     elif test:
         card = {"type": "message", "attachments": [{"contentType": "application/vnd.microsoft.card.adaptive", "content": {
             "$schema": "http://adaptivecards.io/schemas/adaptive-card.json", "type": "AdaptiveCard", "version": "1.4",
             "body": [{"type": "TextBlock", "size": "Large", "weight": "Bolder", "wrap": True,
                       "text": f"Test card · {now:%a %d %b %Y, %H:%M}"},
                      {"type": "TextBlock", "wrap": True,
-                      "text": f"Teams alerts are connected. No {threshold.name} or higher issues on "
-                              f"{len(targets)} site(s) right now, so the daily card would not be sent today."}]}}]}
+                      "text": f"Teams alerts are connected. No new {threshold.name} or higher issues on "
+                              f"{len(targets)} site(s) right now, so nothing would be sent today."}]}}]}
     else:
-        log.info("Daily Teams card: no %s+ issues, nothing sent", threshold.name)
-        return True, "No high-risk issues; nothing sent"
+        log.info("Daily Teams card: no new %s+ issues, nothing sent", threshold.name)
+        return True, "No new high-risk issues; nothing sent"
     try:
         _post(url, card)
     except requests.RequestException as exc:
@@ -163,7 +171,7 @@ def send_daily_card(config, targets, test=False):
         path = _state_file(config)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"sent_at": now.isoformat(),
-                                    "keys": sorted(_key(r, f) for r in rows for f in r["alerts"])}), encoding="utf-8")
+                                    "keys": sorted(_key(r, f) for r in all_rows for f in r["alerts"])}), encoding="utf-8")
     log.info("Teams card sent (%d site(s) with high-risk issues)", len(rows))
     return True, "Card sent to Teams"
 
@@ -224,18 +232,17 @@ def forget_resolved(config, target, report):
 
 def urgent_from_scan(config, target, report, previous, started):
     """What a finished scan needs to tell someone now: HIGH/CRITICAL problems that weren't in the previous report
-    (none on a site's first scan; the daily card covers those) plus autonomous defense events from this scan
+    (on a site's first scan, every HIGH/CRITICAL problem) plus autonomous defense events from this scan
     (reinfections, problems that came back, automatic fixes). Ignored findings are left out."""
     forget_resolved(config, target, report)
     ignored = load_ignored(config).get(target["slug"], {})
     items = []
-    if previous is not None:
-        known = {ignore_key(f"{f.get('check')}|{f.get('title')}") for f in previous.get("findings", [])}
-        for f in report.get("findings", []):
-            if S.parse(f["severity"]) in URGENT and ignore_key(f["title"]) not in ignored \
-                    and ignore_key(f"{f['check']}|{f['title']}") not in known:
-                items.append({"severity": f["severity"], "title": f["title"], "detail": f.get("detail", ""),
-                              "check": f["check"], "kind": "New problem"})
+    known = {ignore_key(f"{f.get('check')}|{f.get('title')}") for f in (previous or {}).get("findings", [])}
+    for f in report.get("findings", []):
+        if S.parse(f["severity"]) in URGENT and ignore_key(f["title"]) not in ignored \
+                and ignore_key(f"{f['check']}|{f['title']}") not in known:
+            items.append({"severity": f["severity"], "title": f["title"], "detail": f.get("detail", ""),
+                          "check": f["check"], "kind": "New problem"})
     try:
         state = json.loads((Path(target["checks"].get("compromise", {}).get("defense_dir") or "state/defense")
                             / f"{(urlparse(target['url']).hostname or '').lower()}.json").read_text(encoding="utf-8"))

@@ -261,6 +261,11 @@ def file_proposals(fs):
         quarantine(p, "Not part of WordPress but placed in a core folder.")
     for p in issues.get("uploads_php", []):
         quarantine(p, "PHP file in the uploads folder (almost always a web shell).")
+    for p in issues.get("disguised_uploads", []):
+        quarantine(p, "Script with a second extension in the uploads folder (a disguised web shell).")
+    for p, h in hits.items():
+        if any("uploaded image" in s for s in h["signatures"]):
+            quarantine(p, "Uploaded image with PHP code hidden inside it.")
     plugins_dir = issues.get("plugins_dir") or ""
     for p in issues.get("plugin_modified", []):
         slug, rel = p[len(plugins_dir) + 1:].split("/", 1)

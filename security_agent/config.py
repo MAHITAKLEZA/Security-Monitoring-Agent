@@ -67,7 +67,7 @@ DEFAULTS = {
     "report": {"output_dir": "reports", "state_dir": "state", "fail_on": "HIGH", "max_parallel_sites": 2},
     # daily_at: local time (HH:MM) at which the dashboard server (--serve) scans every site
     # timezone: IANA name such as "Asia/Kolkata" (empty = the server's local time)
-    "schedule": {"interval_minutes": 60, "daily_at": "09:00", "timezone": ""},
+    "schedule": {"interval_minutes": 30, "daily_at": "", "timezone": ""},
     # Daily Teams card after the scheduled scan; the webhook URL is set from the dashboard and stored in this file
     "notifications": {"teams": {"webhook_url_file": "secrets/teams.env", "min_severity": "HIGH"}},
     # Sites added from the dashboard ("Add Link") are stored here, next to the ones in `targets`

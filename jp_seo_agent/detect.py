@@ -38,11 +38,13 @@ CLOAK_FIX = ("Cloaking code checks the User-Agent or referrer, usually in .htacc
              "functions.php or a fake plugin. The file scan (Site Guard plugin) looks for it.")
 
 
-def hidden_code(markup, block, limit=600):
+def hidden_code(markup, block, limit=900):
     """The hidden element as it appears in the page source: its opening tag (with the CSS that hides it) and contents."""
     at = markup.find(block) if block else -1
     opening = markup[markup.rfind("<", 0, at):at] if at > 0 else ""
-    code = re.sub(r"\s+", " ", opening + block).strip()
+    # the few tags just before it show where it sits (e.g. <ul id="top-menu"> <li class="menu-item-…"> <a> <span>)
+    parents = "".join(re.findall(r"<(?!/)[a-z][^>]*>", markup[max(0, at - 600):max(0, at - len(opening))], re.I)[-4:])
+    code = re.sub(r"\s+", " ", parents + opening + block).strip()
     return code[:limit] + ("…" if len(code) > limit else "")
 
 

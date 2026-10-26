@@ -13,10 +13,11 @@ import io
 import re
 import socket
 import stat
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from jp_seo_agent.files import CODE_EXT, HTACCESS_SIGS, PHP_SIGS
+from jp_seo_agent.files import CODE_EXT, DISGUISED_EXT, HTACCESS_SIGS, MEDIA_EXT, PHP_OPEN_TAG, PHP_SIGS
 
 from ..models import Finding, Severity as S
 from .malware import PATTERNS as JS_SIGS
@@ -25,8 +26,19 @@ from .malware_inside import SVG_SCRIPT
 TAG = "Inside scan"
 TIMEOUT = 20
 MAX_FILES = 20000
-MAX_READS = 400            # file contents read per scan; the rest are read on the next scans
+MAX_READS = 20000          # file contents read per scan (every file); any beyond this are read on the next scans
+BINARY_HEAD_BYTES = 65536  # media, fonts, PDFs...: the start of the file is enough to spot a program or PHP inside
+MAX_ARCHIVE_BYTES = 8_000_000
+MAX_ARCHIVE_MEMBERS = 500
+MAX_ARCHIVE_MEMBER_BYTES = 500_000
+ARCHIVE = object()         # marker: a .zip, opened to look at what is inside
+BINARY = object()          # marker: a binary file, only its first bytes are checked
 MAX_READ_BYTES = 2_000_000
+MAX_GENERIC_BYTES = 1_000_000   # files with no recognised type are read up to this size
+GENERIC = object()         # marker: check a file of unknown type by its content
+# Files that are binary by nature and not worth reading (a real program is caught by name or location instead)
+BINARY_EXT = re.compile(r"\.(?:mp[34]|avi|mov|mkv|webm|wmv|flv|ogg|wav|flac|woff2?|ttf|otf|eot|pdf|zip|rar|7z|gz|tgz|"
+                        r"tar|bz2|xz|iso|mo|psd|ai|docx?|xlsx?|pptx?|map|min\.css|css|lock|sqlite3?|db)$", re.I)
 MAX_LOCATIONS = 20
 SKIP_DIRS = {"node_modules", ".git", ".svn", ".hg", ".cache", "cache", ".npm", ".yarn"}
 SERVER_CODE = re.compile(r"(?:\.(?:php\d?|phtml|phar|pht|phps|inc|cgi|pl|py|sh|asp|aspx|jsp)|^\.htaccess|"
@@ -34,6 +46,7 @@ SERVER_CODE = re.compile(r"(?:\.(?:php\d?|phtml|phar|pht|phps|inc|cgi|pl|py|sh|a
 CONFIG_FILES = re.compile(r"^(?:\.htaccess|\.user\.ini|php\.ini)$", re.I)
 WEB_CODE = re.compile(r"\.(?:m?js|cjs|html?)$", re.I)
 UPLOAD_DIRS = {"uploads", "upload", "images", "image", "img", "media", "files", "static", "assets", "photos"}
+PROGRAM_EXT = re.compile(r"\.(?:exe|dll|msi|bat|cmd|scr|vbs|hta|jar|elf|bin)$", re.I)
 SENSITIVE = re.compile(r"(?:^\.env(?:\..+)?$|\.(?:sql|sql\.gz|bak|old|orig|swp|dump|tar|tar\.gz|tgz|zip|rar|7z|"
                        r"log|pem|key|p12|pfx)$|^id_(?:rsa|dsa|ecdsa|ed25519)$|^\.git$|^\.htpasswd$|"
                        r"^(?:wp-config|config|settings)\.php\..+$)", re.I)
@@ -227,7 +240,51 @@ def _sigs(name):
         return [(n, rx, s.name) for n, rx, s in JS_SIGS]
     if name.lower().endswith(".svg"):
         return [("script inside an SVG image", SVG_SCRIPT, "HIGH")]
-    return None
+    if MEDIA_EXT.search(name):
+        return [("PHP code hidden in an image", PHP_OPEN_TAG, "CRITICAL")]
+    if name.lower().endswith(".zip"):
+        return ARCHIVE
+    if BINARY_EXT.search(name):
+        return BINARY
+    return GENERIC   # any other file (no extension, .txt, .ico, .json, .log, ...) is checked by its content
+
+
+def _read_limit(sigs):
+    return MAX_ARCHIVE_BYTES if sigs is ARCHIVE else BINARY_HEAD_BYTES if sigs is BINARY else \
+        MAX_GENERIC_BYTES if sigs is GENERIC else MAX_READ_BYTES
+
+
+def _archive_hits(data):
+    """Open a zip and look at what is inside: server scripts, and malicious code in the small ones."""
+    hits = []
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            for info in zf.infolist()[:MAX_ARCHIVE_MEMBERS]:
+                leaf = info.filename.rsplit("/", 1)[-1]
+                if not SERVER_CODE.search(leaf) or info.is_dir():
+                    continue
+                hits.append(("server script inside a zip archive", S.MEDIUM, info.filename))
+                if info.file_size <= MAX_ARCHIVE_MEMBER_BYTES and CODE_EXT.search(leaf):
+                    text = zf.read(info).decode("utf-8", "ignore")
+                    hits.extend((n, sev, f"{info.filename}: {snip}") for n, sev, snip in _scan_content(text, PHP_SIGS))
+    except (zipfile.BadZipFile, NotImplementedError, RuntimeError, OSError):
+        pass
+    return hits
+
+
+def _generic_hits(data, text):
+    """Dangerous content in a file whose name doesn't say it is code: a compiled program, a script, or PHP."""
+    hits = []
+    if data.startswith((b"\x7fELF", b"MZ")):
+        hits.append(("compiled program hidden in a non-program file", S.HIGH, repr(data[:12])))
+    elif data.startswith(b"#!"):
+        hits.append(("script (shebang) in an unexpected file", S.MEDIUM, text[:100].replace("\n", " ")))
+    if PHP_OPEN_TAG.search(text):
+        m = PHP_OPEN_TAG.search(text)
+        hits.append(("PHP code inside a file that isn't a PHP file", S.HIGH,
+                     text[max(m.start() - 40, 0):m.end() + 100].replace("\n", " ")))
+        hits.extend(_scan_content(text, PHP_SIGS))
+    return hits
 
 
 def _scan_content(text, sigs):
@@ -258,22 +315,37 @@ def scan(sftp, root, state):
 
     # Which contents to read: new and changed files first, then files never read before (spread over scans)
     hashes = {p: (old[p][2] if p in old and len(old[p]) > 2 and p not in changed else None) for p in files}
-    readable = [p for p in files if _sigs(p.rsplit("/", 1)[-1]) and files[p][0] <= MAX_READ_BYTES]
+    size_cap = lambda sigs: {id(ARCHIVE): MAX_ARCHIVE_BYTES, id(GENERIC): MAX_GENERIC_BYTES,
+                             id(BINARY): float("inf")}.get(id(sigs), MAX_READ_BYTES)
+    readable = [p for p in files if not p.endswith("/") and files[p][0] <= size_cap(_sigs(p.rsplit("/", 1)[-1]))]
+    # Images are read last on the first scan (there can be thousands), but an image that just appeared is read at once
     queue = [p for p in readable if p in new_paths or p in changed] + \
-            [p for p in readable if p not in new_paths and p not in changed and hashes[p] is None]
+            [p for p in readable if p not in new_paths and p not in changed and hashes[p] is None
+             and not MEDIA_EXT.search(p)] + \
+            [p for p in readable if p not in new_paths and p not in changed and hashes[p] is None
+             and MEDIA_EXT.search(p)]
     content_changed, hits = set(), {}
     for path in queue[:MAX_READS]:
+        sigs = _sigs(path.rsplit("/", 1)[-1])
+        limit = _read_limit(sigs)
         try:
             with sftp.open(f"{root}/{path}", "rb") as fh:
-                fh.prefetch(files[path][0])
-                data = fh.read(MAX_READ_BYTES)
+                fh.prefetch(min(files[path][0], limit))
+                data = fh.read(limit)
         except OSError:
             continue
         digest = hashlib.sha256(data).hexdigest()
         if path in old and len(old[path]) > 2 and old[path][2] and old[path][2] != digest:
             content_changed.add(path)
         hashes[path] = digest
-        for name, severity, snippet in _scan_content(data.decode("utf-8", "ignore"), _sigs(path.rsplit("/", 1)[-1])):
+        text = data.decode("utf-8", "ignore")
+        if sigs is ARCHIVE:
+            found = _archive_hits(data)
+        elif sigs in (GENERIC, BINARY):
+            found = _generic_hits(data, text)
+        else:
+            found = _scan_content(text, sigs)
+        for name, severity, snippet in found:
             hits.setdefault(name, []).append((path, snippet, severity))
     if len(queue) > MAX_READS:
         notes.append(f"{len(queue) - MAX_READS} file(s) left to read on the next scans")
@@ -293,6 +365,21 @@ def scan(sftp, root, state):
                                  "Upload, image and static folders should only hold files to download. A script there "
                                  "is how web shells usually hide: check it, remove it if your team didn't put it "
                                  "there, and stop scripts running in that folder."))
+
+    in_uploads = lambda p: bool(UPLOAD_DIRS & {seg.lower() for seg in p.split("/")[:-1]})
+    disguised = [p for p in files if DISGUISED_EXT.search(p.rsplit("/", 1)[-1])]
+    if disguised:
+        findings.append(_finding("Disguised script file (double extension)", S.HIGH, [(p, "") for p in disguised],
+                                 "Found",
+                                 "Names like shell.php.jpg slip past upload filters and run as PHP on servers that map "
+                                 "any '.php.' name to the interpreter. Check them, delete the ones your team didn't "
+                                 "create, and find out how they were uploaded."))
+    programs = [p for p in files if in_uploads(p) and PROGRAM_EXT.search(p.rsplit("/", 1)[-1])]
+    if programs:
+        findings.append(_finding("Program or script in an upload or media folder", S.MEDIUM,
+                                 [(p, "") for p in programs], "Found",
+                                 "Attackers host malware among uploaded files. Open each one and delete it if your "
+                                 "team didn't upload it."))
 
     sensitive = [p.rstrip("/") for p in files if SENSITIVE.search(p.rstrip("/").rsplit("/", 1)[-1])]
     if sensitive:
