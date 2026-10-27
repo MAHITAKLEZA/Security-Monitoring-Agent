@@ -81,7 +81,7 @@ checks:
     # WordPress files and applied fixes every watch_interval_minutes; the security monitor re-runs every other check
     # on every site every security_interval_minutes. See jp_seo_agent/README.md.
     defense:
-      enabled: true
+      enabled: false   # autonomous defense and automatic fixes are off; the SSH file watch (schedule.file_watch_seconds) is separate
       watch_interval_minutes: 30
       security_interval_minutes: 30   # immediate alerts: HIGH/CRITICAL only, each sent once
       # Re-apply a fix a person already approved when the same target is reinfected. Off by default; it can also
@@ -127,9 +127,12 @@ report:
   max_parallel_sites: 2
 
 schedule:
-  # The dashboard server (--serve) scans every site every interval_minutes. Teams gets each new HIGH/CRITICAL
-  # problem once, right after the scan that finds it (webhook: dashboard Settings > Teams alerts).
-  # To scan once a day instead, add  daily_at: "10:15"  (HH:MM, 24-hour clock); the daily Teams card is sent then.
+  # The dashboard server (--serve) runs a full scan of a site when it is added or when you click Scan, then watches every
+  # site every file_watch_seconds (outside checks, plus the server files for sites with SSH access). There is no
+  # repeating full scan. Teams gets each new HIGH/CRITICAL problem once (webhook: dashboard Settings > Teams alerts).
+  # To also run a full scan every interval_minutes, start with --serve --loop; to scan once a day, add
+  # daily_at: "10:15"  (HH:MM, 24-hour clock); the daily Teams card is sent then.
+  file_watch_seconds: 60
   interval_minutes: 30
   # Time zone for daily_at (IANA name). Empty = the server's local time, which is often UTC on a hosted server.
   timezone: Asia/Kolkata

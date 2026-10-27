@@ -12,6 +12,8 @@ import hashlib
 import io
 import re
 import socket
+import threading
+from concurrent.futures import ThreadPoolExecutor
 import stat
 import zipfile
 from datetime import datetime, timezone
@@ -20,12 +22,15 @@ from pathlib import Path
 from jp_seo_agent.files import CODE_EXT, DISGUISED_EXT, HTACCESS_SIGS, MEDIA_EXT, PHP_OPEN_TAG, PHP_SIGS
 
 from ..models import Finding, Severity as S
-from .malware import PATTERNS as JS_SIGS
-from .malware_inside import SVG_SCRIPT
+from .malware import PATTERNS as JS_SIGS, SPAM_WORDS
+from .malware_inside import HIDDEN_ATTR, HREF, SVG_SCRIPT
 
 TAG = "Inside scan"
 TIMEOUT = 20
 MAX_FILES = 20000
+CANCEL = threading.Event()   # set by the dashboard's Stop button; the file scan and the checks stop at the next step
+WORKERS = 4                  # SSH connections used at once, to list folders and read files in parallel
+PROGRESS = {}   # what the scan in progress is doing, for the dashboard: phase, found, done, total
 MAX_READS = 20000          # file contents read per scan (every file); any beyond this are read on the next scans
 BINARY_HEAD_BYTES = 65536  # media, fonts, PDFs...: the start of the file is enough to spot a program or PHP inside
 MAX_ARCHIVE_BYTES = 8_000_000
@@ -39,6 +44,7 @@ GENERIC = object()         # marker: check a file of unknown type by its content
 # Files that are binary by nature and not worth reading (a real program is caught by name or location instead)
 BINARY_EXT = re.compile(r"\.(?:mp[34]|avi|mov|mkv|webm|wmv|flv|ogg|wav|flac|woff2?|ttf|otf|eot|pdf|zip|rar|7z|gz|tgz|"
                         r"tar|bz2|xz|iso|mo|psd|ai|docx?|xlsx?|pptx?|map|min\.css|css|lock|sqlite3?|db)$", re.I)
+MAX_QUICK_READS = 100      # files read per one-minute watch check
 MAX_LOCATIONS = 20
 SKIP_DIRS = {"node_modules", ".git", ".svn", ".hg", ".cache", "cache", ".npm", ".yarn"}
 SERVER_CODE = re.compile(r"(?:\.(?:php\d?|phtml|phar|pht|phps|inc|cgi|pl|py|sh|asp|aspx|jsp)|^\.htaccess|"
@@ -54,6 +60,10 @@ SENSITIVE = re.compile(r"(?:^\.env(?:\..+)?$|\.(?:sql|sql\.gz|bak|old|orig|swp|d
 
 class SSHError(Exception):
     """Couldn't connect, log in or open the website folder."""
+
+
+class ScanStopped(Exception):
+    """The scan was stopped from the dashboard."""
 
 
 class HostKeyChanged(SSHError):
@@ -137,6 +147,11 @@ def _folders(domain):
     """Where hosts usually keep a site's files, most specific first (relative paths start at the login folder)."""
     names = [domain] + ([domain[4:]] if domain.startswith("www.") else [f"www.{domain}"])
     out = []
+    labels = domain.split(".")
+    for i in range(1, len(labels) - 1):   # a subdomain lives inside its parent domain's folder (Hostinger, cPanel)
+        parent, sub = ".".join(labels[i:]), ".".join(labels[:i])
+        out += [f"domains/{parent}/public_html/{sub}", f"domains/{parent}/public_html/{domain}",
+                f"public_html/{sub}", f"{parent}/public_html/{sub}", f"domains/{parent}/public_html"]
     for d in names:
         out += [f"domains/{d}/public_html", f"{d}/public_html", f"public_html/{d}", d, f"/var/www/{d}/public_html",
                 f"/var/www/{d}/html", f"/var/www/{d}/dist", f"/var/www/{d}/build", f"/var/www/{d}"]
@@ -203,29 +218,62 @@ def _key_text(cfg):
         raise SSHError(f"Can't read the private key file {path}.") from exc
 
 
-def _walk(sftp, root, notes):
-    """{relative path: (size, mtime, mode)} of every regular file under root (symlinks are not followed)."""
-    files, stack = {}, [""]
-    while stack and len(files) < MAX_FILES:
-        rel_dir = stack.pop()
+def _extra_connections(ssh, count=WORKERS - 1):
+    """More SSH sessions to the same server, to work in parallel. A host that refuses more logins just gives fewer."""
+    extra = []
+    for _ in range(count):
         try:
-            entries = sftp.listdir_attr(f"{root}/{rel_dir}" if rel_dir else root)
-        except OSError:
-            notes.append(f"can't list {rel_dir or '/'}")
-            continue
-        for e in entries:
-            rel = f"{rel_dir}/{e.filename}" if rel_dir else e.filename
-            mode = e.st_mode or 0
-            if stat.S_ISDIR(mode):
-                if e.filename in SKIP_DIRS:
-                    if e.filename == ".git":
-                        files[rel] = (0, int(e.st_mtime or 0), mode)   # reported as a sensitive item
+            extra.append(connect(ssh["host"], ssh.get("port", 22), ssh.get("username", ""), _key_text(ssh),
+                                 ssh.get("host_key"))[:2])
+        except Exception:
+            break
+    return extra
+
+
+def _chunks(items, n):
+    return [items[i::n] for i in range(n) if items[i::n]]
+
+
+def _walk(sftps, root, notes):
+    """{relative path: (size, mtime, mode)} of every regular file under root (symlinks are not followed).
+    `sftps`: one SFTP session or a list of them; the folders of each level are listed in parallel."""
+    sftps = list(sftps) if isinstance(sftps, (list, tuple)) else [sftps]
+    files, level = {}, [""]
+
+    def list_dirs(sftp, dirs):
+        out = []
+        for rel_dir in dirs:
+            if CANCEL.is_set():
+                raise ScanStopped()
+            try:
+                out.append((rel_dir, sftp.listdir_attr(f"{root}/{rel_dir}" if rel_dir else root)))
+            except OSError:
+                out.append((rel_dir, None))
+        return out
+
+    with ThreadPoolExecutor(max_workers=len(sftps)) as pool:
+        while level and len(files) < MAX_FILES:
+            parts = _chunks(level, len(sftps))
+            results = [pair for part in pool.map(lambda a: list_dirs(*a), zip(sftps, parts)) for pair in part]
+            level = []
+            for rel_dir, entries in results:
+                if entries is None:
+                    notes.append(f"can't list {rel_dir or '/'}")
                     continue
-                stack.append(rel)
-                if mode & 0o002:
-                    files.setdefault(rel + "/", (0, int(e.st_mtime or 0), mode))
-            elif stat.S_ISREG(mode):
-                files[rel] = (int(e.st_size or 0), int(e.st_mtime or 0), mode)
+                for e in entries:
+                    rel = f"{rel_dir}/{e.filename}" if rel_dir else e.filename
+                    mode = e.st_mode or 0
+                    if stat.S_ISDIR(mode):
+                        if e.filename in SKIP_DIRS:
+                            if e.filename == ".git":
+                                files[rel] = (0, int(e.st_mtime or 0), mode)   # reported as a sensitive item
+                            continue
+                        level.append(rel)
+                        if mode & 0o002:
+                            files.setdefault(rel + "/", (0, int(e.st_mtime or 0), mode))
+                    elif stat.S_ISREG(mode):
+                        files[rel] = (int(e.st_size or 0), int(e.st_mtime or 0), mode)
+            PROGRESS["found"] = len(files)
     if len(files) >= MAX_FILES:
         notes.append(f"stopped at {MAX_FILES} files")
     return files
@@ -254,6 +302,39 @@ def _read_limit(sigs):
         MAX_GENERIC_BYTES if sigs is GENERIC else MAX_READ_BYTES
 
 
+def _size_cap(sigs):
+    """The largest file worth reading for this kind of file (binary files only have their first bytes read)."""
+    return float("inf") if sigs is BINARY else MAX_ARCHIVE_BYTES if sigs is ARCHIVE else \
+        MAX_GENERIC_BYTES if sigs is GENERIC else MAX_READ_BYTES
+
+
+def _spam_hits(text):
+    """SEO spam injected into a page or script: links hidden from visitors, or pharma/casino/adult keywords."""
+    hits = []
+    for m in HIDDEN_ATTR.finditer(text):
+        links = sorted(set(HREF.findall(text[m.start():m.start() + 1500])))
+        if len(links) >= 2:
+            hits.append(("hidden links to other sites (SEO spam injection)", S.HIGH, ", ".join(links[:5])))
+            break
+    words = sorted({w.lower() for w in SPAM_WORDS.findall(re.sub(r"<[^>]+>", " ", text))})
+    if len(words) >= 2:
+        hits.append(("spam keywords (pharma, casino or adult content injected)", S.HIGH, ", ".join(words)))
+    return hits
+
+
+def _content_hits(sigs, data, name):
+    """[(what was found, severity, snippet)] in a file's content, whatever kind of file it is."""
+    text = data.decode("utf-8", "ignore") if isinstance(data, bytes) else data
+    if sigs is ARCHIVE:
+        return _archive_hits(data)
+    if sigs is BINARY:
+        return _generic_hits(data, text, "")
+    found = _generic_hits(data, text, name) if sigs is GENERIC else _scan_content(text, sigs)
+    if not TEXT_QUOTING.search(name):   # logs and docs quote spam words without being spam
+        found += _spam_hits(text)
+    return found
+
+
 def _archive_hits(data):
     """Open a zip and look at what is inside: server scripts, and malicious code in the small ones."""
     hits = []
@@ -272,18 +353,30 @@ def _archive_hits(data):
     return hits
 
 
-def _generic_hits(data, text):
+TEXT_QUOTING = re.compile(r"\.(?:log|md|rst|csv|po|pot|lock)$", re.I)
+ENCODED_BLOB = re.compile(r"[A-Za-z0-9+/=]{4000,}")   # base64 or hex with no spaces or line breaks
+
+
+def _generic_hits(data, text, name=""):
     """Dangerous content in a file whose name doesn't say it is code: a compiled program, a script, or PHP."""
     hits = []
     if data.startswith((b"\x7fELF", b"MZ")):
         hits.append(("compiled program hidden in a non-program file", S.HIGH, repr(data[:12])))
     elif data.startswith(b"#!"):
         hits.append(("script (shebang) in an unexpected file", S.MEDIUM, text[:100].replace("\n", " ")))
-    if PHP_OPEN_TAG.search(text):
-        m = PHP_OPEN_TAG.search(text)
+    m = PHP_OPEN_TAG.search(text)
+    if m:
         hits.append(("PHP code inside a file that isn't a PHP file", S.HIGH,
                      text[max(m.start() - 40, 0):m.end() + 100].replace("\n", " ")))
-        hits.extend(_scan_content(text, PHP_SIGS))
+    # A .txt/.dat/.ico can hold PHP without a <?php tag (another script reads it and runs it), so the malware
+    # patterns run on every such file. Logs and docs are skipped: they quote attack strings without being one.
+    if m or (name and not TEXT_QUOTING.search(name)):   # no name: a binary file (font, PDF...), PHP tag only
+        seen = {h[0] for h in hits}
+        hits.extend(h for h in _scan_content(text, PHP_SIGS) if h[0] not in seen)
+        blob = ENCODED_BLOB.search(text)
+        if blob:
+            hits.append(("large encoded blob in a non-code file (hidden payload)", S.HIGH,
+                         blob.group(0)[:80] + f"… ({len(blob.group(0))} characters)"))
     return hits
 
 
@@ -305,19 +398,21 @@ def _finding(title, severity, items, detail, recommendation):
                    recommendation, {"locations": locs, "via": "ssh"})
 
 
-def scan(sftp, root, state):
+def scan(sftp, root, state, extra=()):
+    """`extra`: more (transport, sftp) sessions to the same server, used in parallel with `sftp`."""
     findings, notes = [], []
     prev = state.get("files") if state.get("root") == root else None
-    files = _walk(sftp, root, notes)
+    PROGRESS.clear()
+    PROGRESS.update(phase="listing", found=0)
+    sftps = [sftp] + [e[1] for e in extra]
+    files = _walk(sftps, root, notes)
     old = prev or {}
     new_paths = [p for p in files if p not in old] if prev is not None else []
     changed = [p for p in files if p in old and tuple(old[p][:2]) != files[p][:2]]
 
     # Which contents to read: new and changed files first, then files never read before (spread over scans)
     hashes = {p: (old[p][2] if p in old and len(old[p]) > 2 and p not in changed else None) for p in files}
-    size_cap = lambda sigs: {id(ARCHIVE): MAX_ARCHIVE_BYTES, id(GENERIC): MAX_GENERIC_BYTES,
-                             id(BINARY): float("inf")}.get(id(sigs), MAX_READ_BYTES)
-    readable = [p for p in files if not p.endswith("/") and files[p][0] <= size_cap(_sigs(p.rsplit("/", 1)[-1]))]
+    readable = [p for p in files if not p.endswith("/") and files[p][0] <= _size_cap(_sigs(p.rsplit("/", 1)[-1]))]
     # Images are read last on the first scan (there can be thousands), but an image that just appeared is read at once
     queue = [p for p in readable if p in new_paths or p in changed] + \
             [p for p in readable if p not in new_paths and p not in changed and hashes[p] is None
@@ -325,28 +420,34 @@ def scan(sftp, root, state):
             [p for p in readable if p not in new_paths and p not in changed and hashes[p] is None
              and MEDIA_EXT.search(p)]
     content_changed, hits = set(), {}
-    for path in queue[:MAX_READS]:
-        sigs = _sigs(path.rsplit("/", 1)[-1])
-        limit = _read_limit(sigs)
-        try:
-            with sftp.open(f"{root}/{path}", "rb") as fh:
-                fh.prefetch(min(files[path][0], limit))
-                data = fh.read(limit)
-        except OSError:
-            continue
-        digest = hashlib.sha256(data).hexdigest()
-        if path in old and len(old[path]) > 2 and old[path][2] and old[path][2] != digest:
-            content_changed.add(path)
-        hashes[path] = digest
-        text = data.decode("utf-8", "ignore")
-        if sigs is ARCHIVE:
-            found = _archive_hits(data)
-        elif sigs in (GENERIC, BINARY):
-            found = _generic_hits(data, text)
-        else:
-            found = _scan_content(text, sigs)
-        for name, severity, snippet in found:
-            hits.setdefault(name, []).append((path, snippet, severity))
+    PROGRESS.update(phase="reading", found=len(files), done=0, total=min(len(queue), MAX_READS))
+    def read_files(client, paths):
+        out = []
+        for path in paths:
+            if CANCEL.is_set():
+                raise ScanStopped()
+            sigs = _sigs(path.rsplit("/", 1)[-1])
+            limit = _read_limit(sigs)
+            try:
+                with client.open(f"{root}/{path}", "rb") as fh:
+                    fh.prefetch(min(files[path][0], limit))
+                    data = fh.read(limit)
+            except OSError:
+                continue
+            out.append((path, hashlib.sha256(data).hexdigest(),
+                        list(_content_hits(sigs, data, path.rsplit("/", 1)[-1]))))
+            PROGRESS["done"] = PROGRESS.get("done", 0) + 1
+        return out
+
+    with ThreadPoolExecutor(max_workers=len(sftps)) as pool:
+        results = pool.map(lambda a: read_files(*a), zip(sftps, _chunks(queue[:MAX_READS], len(sftps))))
+        for path, digest, found in (r for part in results for r in part):
+            if path in old and len(old[path]) > 2 and old[path][2] and old[path][2] != digest:
+                content_changed.add(path)
+            hashes[path] = digest
+            for name, severity, snippet in found:
+                hits.setdefault(name, []).append((path, snippet, severity))
+    PROGRESS.clear()
     if len(queue) > MAX_READS:
         notes.append(f"{len(queue) - MAX_READS} file(s) left to read on the next scans")
 
@@ -376,7 +477,7 @@ def scan(sftp, root, state):
                                  "create, and find out how they were uploaded."))
     programs = [p for p in files if in_uploads(p) and PROGRAM_EXT.search(p.rsplit("/", 1)[-1])]
     if programs:
-        findings.append(_finding("Program or script in an upload or media folder", S.MEDIUM,
+        findings.append(_finding("Program or script in an upload or media folder", S.HIGH,
                                  [(p, "") for p in programs], "Found",
                                  "Attackers host malware among uploaded files. Open each one and delete it if your "
                                  "team didn't upload it."))
@@ -423,6 +524,63 @@ def scan(sftp, root, state):
     return findings
 
 
+def quick_check(ssh, prev):
+    """The fast watch, run every minute between full scans: list the website folder (no full read) and compare the
+    files with `prev` ({path: [size, mtime]} from the last quick check; None = first run, just record).
+    Every new or changed file (scripts, JS/HTML, images, archives, any other type) is read and checked against the
+    malware patterns: a match is alerted at the pattern's severity (CRITICAL in a code file). A new server-side code
+    file is HIGH even when clean. A changed file with clean content is left alone (a deploy or a plugin update).
+    At most MAX_QUICK_READS files are read per check, code files first; the full scan covers the rest.
+    Returns (all files now, alert items)."""
+    transport, sftp, _ = connect(ssh["host"], ssh.get("port", 22), ssh.get("username", ""), _key_text(ssh), ssh.get("host_key"))
+    try:
+        root = sftp.normalize(ssh.get("web_root") or ".")
+        extra = _extra_connections(ssh)
+        try:
+            files = _walk([sftp] + [e[1] for e in extra], root, [])
+        finally:
+            for t, _ in extra:
+                t.close()
+        leaf = lambda p: p.rsplit("/", 1)[-1]
+        is_code = lambda p: bool(SERVER_CODE.search(leaf(p)) or DISGUISED_EXT.search(leaf(p)))
+        state = {p: [v[0], v[1]] for p, v in files.items() if not p.endswith("/")}
+        if prev is None:
+            return state, []
+        items = []
+        todo = sorted((p for p, v in state.items() if prev.get(p) != v), key=lambda p: not is_code(p))
+        for p in todo[:MAX_QUICK_READS]:
+            kind = "New" if p not in prev else "Changed"
+            sigs = _sigs(leaf(p))
+            hits = []
+            if state[p][0] <= _size_cap(sigs):
+                try:
+                    with sftp.open(f"{root}/{p}", "rb") as fh:
+                        hits = _content_hits(sigs, fh.read(_read_limit(sigs)), leaf(p))
+                except OSError:
+                    pass
+            hits = [h for h in hits if h[1] >= S.HIGH or is_code(p)]   # a stray shebang in a text file isn't an alarm
+            if hits:
+                severity = "CRITICAL" if is_code(p) else max(hits, key=lambda h: h[1])[1].name
+                items.append({"severity": severity, "check": "malware", "kind": "New problem",
+                              "title": f"{TAG}: {kind} file with malicious code: {p}",
+                              "detail": "Matches: " + ", ".join(h[0] for h in hits[:4]) + ". Do not open it; remove it and find how it got there."})
+            elif kind == "New" and is_code(p):
+                items.append({"severity": "HIGH", "check": "malware", "kind": "New problem",
+                              "title": f"{TAG}: New server-side file: {p}",
+                              "detail": "A new script or .htaccess file appeared on the server. If nobody on your team deployed it, treat it as a break-in."})
+            elif kind == "New" and SENSITIVE.search(leaf(p)) and not leaf(p).lower().endswith(".log"):
+                items.append({"severity": "HIGH", "check": "malware", "kind": "New problem",
+                              "title": f"{TAG}: New secret or backup file in the web folder: {p}",
+                              "detail": "A key, .env file, database dump or archive appeared where anyone may be able to download it. Remove it and rotate any password it holds."})
+            elif kind == "New" and PROGRAM_EXT.search(leaf(p)) and UPLOAD_DIRS & {s.lower() for s in p.split("/")[:-1]}:
+                items.append({"severity": "HIGH", "check": "malware", "kind": "New problem",
+                              "title": f"{TAG}: New program in an upload or media folder: {p}",
+                              "detail": "An executable or script file was added among uploaded files. Delete it if your team didn't upload it."})
+        return state, items
+    finally:
+        transport.close()
+
+
 def run(ctx, cfg, state):
     ssh = cfg.get("ssh") or {}
     if not ssh.get("host") or not cfg.get("inside_scan", True):
@@ -436,7 +594,10 @@ def run(ctx, cfg, state):
     except SSHError as exc:
         return [Finding("malware", f"{TAG}: could not log in over SSH", S.INFO, str(exc),
                         "Fix the SSH access, then scan again.")]
+    extra = _extra_connections(ssh)
     try:
-        return scan(sftp, sftp.normalize(ssh.get("web_root") or "."), state.setdefault("ssh_inside", {}))
+        return scan(sftp, sftp.normalize(ssh.get("web_root") or "."), state.setdefault("ssh_inside", {}), extra)
     finally:
+        for t, _ in extra:
+            t.close()
         transport.close()

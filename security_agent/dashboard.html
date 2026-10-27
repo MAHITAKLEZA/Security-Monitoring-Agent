@@ -38,7 +38,7 @@ a:hover { text-decoration: underline; }
 .hidden { display: none !important; }
 
 /* ---------- shell ---------- */
-.content { min-width: 0; max-width: 1600px; margin: 0 auto; padding: 20px 28px 40px; }
+.content { width: 100%; min-width: 0; max-width: 1600px; margin: 0 auto; padding: 20px 28px 40px; }
 .top .title { color: inherit; text-decoration: none; }
 .top .title:hover { text-decoration: none; }
 .icon-btn[aria-current="page"] { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -68,7 +68,7 @@ a:hover { text-decoration: underline; }
 
 /* ---------- cards ---------- */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; box-shadow: var(--shadow); min-width: 0; }
-.card-h { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.card-h { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .card-h h2 { font-size: 16px; margin: 0; font-weight: 650; }
 .card-h .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 .grid { display: grid; gap: 16px; }
@@ -163,6 +163,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabula
 .kpi .value { font-size: 28px; font-weight: 700; line-height: 1.1; margin-top: 6px; font-variant-numeric: tabular-nums; }
 .kpi .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
 .kpi.clickable { cursor: pointer; } .kpi.clickable:hover { border-color: var(--accent); }
+.kc.clickable { cursor: pointer; } .kc.clickable:hover, .kc.clickable:focus-visible { border-color: var(--accent); outline: none; }
 .modules { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .module { cursor: pointer; display: flex; flex-direction: column; gap: 8px; text-align: left; font: inherit; color: inherit; }
 .module:hover, .module.active { border-color: var(--accent); }
@@ -237,7 +238,7 @@ dialog::backdrop { background: rgba(10,20,40,.45); }
 .kc { padding: 14px; display: flex; flex-direction: column; gap: 12px; color: inherit; }
 a.kc:hover { border-color: var(--accent); text-decoration: none; }
 .kc .t1 { display: flex; gap: 12px; align-items: center; }
-.kc .ic { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+.kc .ic { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; flex: none; }
 .kc .l { font-weight: 650; font-size: 12.5px; }
 .kc .v { font-size: 28px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .kc .s { color: var(--muted); font-size: 11.5px; }
@@ -257,8 +258,175 @@ a.kc:hover { border-color: var(--accent); text-decoration: none; }
 .chk-card ul li { display: flex; justify-content: space-between; gap: 8px; }
 .chk-card ul a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ---------- app shell: sidebar + top bar ---------- */
+.app { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; }
+.app.collapsed { grid-template-columns: minmax(0, 1fr); }
+.app.collapsed .side { display: none; }
+.main { min-width: 0; display: flex; flex-direction: column; }
+.side { position: sticky; top: 0; height: 100vh; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 18px; padding: 18px 14px; overflow-y: auto; }
+.brand { display: flex; gap: 10px; align-items: center; color: inherit; font-weight: 700; line-height: 1.2; padding: 0 6px; }
+.brand:hover { text-decoration: none; }
+.brand .logo { width: 38px; height: 38px; border-radius: 11px; background: linear-gradient(135deg, #2f80ed, #1a56c4); color: #fff; display: grid; place-items: center; flex: none; }
+.nav { display: grid; gap: 2px; }
+.nav a { display: flex; gap: 12px; align-items: center; padding: 9px 12px; border-radius: 9px; color: var(--text-2); font-weight: 550; }
+.nav a:hover { background: var(--surface-2); text-decoration: none; }
+.nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
+.sys { margin-top: auto; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px; font-size: 12px; display: grid; gap: 4px; color: var(--text-2); }
+.sys .h { display: flex; gap: 8px; align-items: center; font-weight: 650; color: var(--text); font-size: 13px; }
+.sys .ok { color: var(--good); font-weight: 600; margin-bottom: 4px; }
+.sys .ok.bad { color: var(--bad); }
+.sys div.r { display: flex; justify-content: space-between; gap: 8px; }
+.topbar { display: flex; align-items: center; gap: 14px; padding: 12px 28px; border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 20; }
+.gsearch { flex: 1; max-width: 520px; position: relative; }
+.gsearch svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+.gsearch input { width: 100%; border: 1px solid var(--border); background: var(--surface-2); border-radius: 10px; padding: 9px 12px 9px 36px; }
+.topbar .spacer { margin-left: auto; }
+.bell { position: relative; }
+.bell .badge { position: absolute; top: 6px; right: 7px; width: 9px; height: 9px; border-radius: 50%; background: var(--bad); border: 2px solid var(--surface); }
+.userchip { display: flex; gap: 10px; align-items: center; color: inherit; font-weight: 600; }
+.userchip:hover { text-decoration: none; }
+.avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 14px; flex: none; }
+.menu-btn { flex: none; }
+
+/* scan progress card */
+.scan { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: center; }
+.scan .lead { display: flex; gap: 16px; align-items: center; min-width: 0; }
+.scan .radar { width: 64px; height: 64px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; flex: none; }
+.scan .lead > div { flex: 1; min-width: 0; }
+.scan h2 { margin: 0; font-size: 16px; }
+.pbar { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.pbar .track { flex: 1; height: 10px; border-radius: 5px; background: var(--grid); overflow: hidden; }
+.pbar .fill { height: 100%; background: var(--accent); border-radius: 5px; transition: width .4s; }
+.pbar b { font-variant-numeric: tabular-nums; font-size: 13px; }
+.scan .f3s { display: flex; gap: 8px; }
+.f3 { display: flex; gap: 12px; align-items: center; padding-left: 24px; border-left: 1px solid var(--border); }
+.f3 .ic { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--accent-soft); color: var(--accent); }
+.f3 .ic.g { background: var(--good-soft); color: var(--good); }
+.f3 .l { color: var(--muted); font-size: 12px; }
+.f3 .v { font-weight: 650; white-space: nowrap; }
+
+/* KPI cards: value, change vs the first day shown, sparkline */
+.kc .top1 { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.kc .delta { font-size: 12px; font-weight: 650; white-space: nowrap; margin-top: 4px; }
+.kc .delta.bad { color: var(--bad); } .kc .delta.good { color: var(--good); }
+.kc .spark { height: 44px; margin: 0 -4px -6px; }
+.kc .spark svg { width: 100%; height: 100%; display: block; }
+
+/* overview, donut, recent list */
+.ov-legend { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; font-size: 12px; color: var(--text-2); margin-top: 6px; }
+.ov-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ov-legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.donut-box { display: flex; gap: 22px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.donut-box .lg { display: grid; gap: 10px; font-size: 13px; }
+.donut-box .lg div { display: flex; gap: 8px; align-items: center; }
+.donut-box .lg .n { margin-left: auto; padding-left: 14px; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.donut-box .lg .n b { color: var(--text); }
+.rv { list-style: none; margin: 0; padding: 0; display: grid; }
+.rv li { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+.rv li:last-child { border-bottom: 0; }
+.rv li:hover .t { color: var(--accent); }
+.rv .t { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv .u { color: var(--text-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv .tm { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.rv .sevtag { border-radius: 7px; padding: 3px 10px; font-size: 12px; font-weight: 650; }
+.rv .sevtag.high { background: var(--bad-soft); color: var(--bad); }
+.rv .sevtag.medium { background: var(--warn-soft); color: #a86f00; }
+
+/* websites table */
+.fav { width: 28px; height: 28px; border-radius: 7px; display: inline-grid; place-items: center; color: #fff; font-weight: 700; font-size: 13px; flex: none; }
+.site-cell { display: flex; gap: 10px; align-items: center; min-width: 150px; }
+.site-cell .u { color: var(--muted); font-size: 12px; }
+.when { display: inline-flex; gap: 6px; align-items: center; color: var(--text-2); font-size: 12px; white-space: nowrap; }
+details.more { position: relative; display: inline-block; }
+details.more > summary { list-style: none; cursor: pointer; border: 1px solid var(--border); border-radius: 7px; width: 30px; height: 28px; display: inline-grid; place-items: center; background: var(--surface); }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more .menu { position: fixed; z-index: 30; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.14); padding: 6px; display: grid; gap: 2px; min-width: 150px; }
+details.more .menu button { border: 0; background: none; text-align: left; padding: 7px 10px; border-radius: 7px; cursor: pointer; display: flex; gap: 8px; align-items: center; }
+details.more .menu button:hover { background: var(--surface-2); }
+details.more .menu button.danger { color: var(--bad); }
+details.more .menu button:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---------- site report ---------- */
+.crumbs { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+.crumbs a { display: inline-flex; gap: 4px; align-items: center; }
+.crumbs b { color: var(--text); }
+.site-head2 { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.site-head2 .gico { width: 56px; height: 56px; border-radius: 14px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; flex: none; }
+.site-head2 .nm2 { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.site-head2 h2 { margin: 0; font-size: 22px; }
+.site-head2 .ext { display: inline-flex; gap: 5px; align-items: center; font-size: 13px; }
+.site-head2 .lastsc { display: flex; gap: 12px; align-items: center; padding-left: 20px; margin-left: 12px; border-left: 1px solid var(--border); color: var(--accent); }
+.site-head2 .lastsc b { color: var(--text); font-size: 13px; display: block; }
+.site-head2 .actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.kpis2 { grid-template-columns: 1.8fr 1.2fr repeat(4, minmax(0, .9fr)); }
+.kpis2 .rk svg { flex: none; }
+.kpis2 .lastscan2 .big { white-space: nowrap; }
+.kpis2 .card { display: flex; flex-direction: column; gap: 6px; }
+.kpis2 .big { font-size: 20px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.kpis2 .ico2 { width: 36px; height: 36px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; flex: none; }
+.kpis2 .rk { display: flex; gap: 12px; align-items: center; }
+.kpis2 .lastscan2 { justify-content: space-between; }
+.chip2 { display: inline-flex; gap: 6px; align-items: center; border-radius: 999px; padding: 3px 10px 3px 8px; font-size: 11.5px; font-weight: 650; white-space: nowrap; }
+.sc-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin: 26px 0 12px; }
+.sc-head h2 { margin: 0; font-size: 18px; }
+.sc-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+.facts .fact .l { color: var(--text-2); font-size: 12px; font-weight: 600; }
+.facts .fact .v { font-size: 22px; font-weight: 700; line-height: 1.2; }
+.facts .fact .sub { color: var(--muted); font-size: 12px; }
+.module .head { align-items: flex-start; }
+.module .head .desc { font-weight: 400; min-height: 0; margin-top: 2px; }
+.module .head > div { min-width: 0; }
+.module .foot { margin-top: auto; padding-top: 4px; }
+/* check page: counts, tabs, finding rows */
+.cnt5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.cnt { display: flex; gap: 14px; align-items: center; }
+.cnt .ico2 { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+.cnt .big { font-size: 26px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--border); background: var(--surface); border-radius: 12px 12px 0 0; padding: 0 8px; }
+.tabs a { padding: 12px 12px; color: var(--text-2); font-size: 13px; white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs a:hover { text-decoration: none; color: var(--text); }
+.tabs a[aria-current="page"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 650; }
+.tabs + .card { border-top-left-radius: 0; border-top-right-radius: 0; margin-top: 0; }
+.frows { display: grid; gap: 10px; }
+.frow { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.frow > summary { list-style: none; display: flex; gap: 14px; align-items: center; padding: 12px 16px; cursor: pointer; }
+.frow > summary::-webkit-details-marker { display: none; }
+.frow .ft { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
+.frow .det { display: flex; gap: 8px; align-items: center; color: var(--text-2); font-size: 12px; line-height: 1.3; white-space: nowrap; padding-left: 14px; border-left: 1px solid var(--border); }
+.frow .chev { display: inline-flex; color: var(--muted); transition: transform .15s; }
+.frow[open] .chev { transform: rotate(90deg); }
+.fbody { padding: 0 16px 16px; display: grid; gap: 12px; }
+.fgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.fh { display: flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 650; color: var(--text-2); margin-bottom: 4px; }
+.fbody p { margin: 0 0 10px; overflow-wrap: anywhere; font-size: 13px; }
+.reco { background: var(--good-soft); border: 1px solid color-mix(in srgb, var(--good) 25%, transparent); border-radius: 10px; padding: 10px 12px; }
+.reco p { margin: 0; }
+.ev .ev-h { display: flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 650; color: var(--text-2); margin-bottom: 4px; }
+.codeblock { position: relative; background: #0f1b2d; color: #d6e2f5; border-radius: 10px; }
+.codeblock pre { background: none; border: 0; color: inherit; margin: 0; padding: 12px 12px 12px 8px; max-height: 260px; font-size: 12px; }
+.codeblock .ln { display: inline-block; width: 26px; margin-right: 10px; text-align: right; color: #6f7f99; user-select: none; }
+.codeblock .copy { position: absolute; top: 8px; right: 8px; z-index: 1; border: 1px solid #34466a; background: #17284a; color: #d6e2f5; border-radius: 7px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+.fmeta { display: flex; gap: 22px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--text-2); border-top: 1px solid var(--border); padding-top: 12px; }
+.fmeta span { display: inline-flex; gap: 6px; align-items: center; }
+.fmeta b { color: var(--text); font-weight: 600; }
+@media (max-width: 1100px) { .cnt5 { grid-template-columns: repeat(3, minmax(0, 1fr)); } .fgrid { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .cnt5 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .frow .det { display: none; } }
+@media (max-width: 1360px) { .kpis2 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .kpis2 { grid-template-columns: 1fr; } .site-head2 .lastsc { border-left: 0; padding-left: 0; margin-left: 0; } }
+
 /* ---------- responsive ---------- */
-@media (max-width: 1500px) {
+@media (max-width: 900px) {
+  .app, .app.collapsed { grid-template-columns: minmax(0, 1fr); }
+  .side { position: fixed; z-index: 40; left: 0; top: 0; width: 250px; transform: translateX(-100%); transition: transform .2s; }
+  .app.side-open .side { transform: none; box-shadow: 0 0 40px rgba(0,0,0,.3); }
+  .app.collapsed .side { display: flex; }
+  .topbar { padding: 10px 16px; }
+  .scan { grid-template-columns: 1fr; }
+  .scan .f3s { flex-wrap: wrap; }
+  .f3 { padding-left: 0; border-left: 0; }
+  .userchip .nm { display: none; }
+}
+@media (max-width: 1360px) {
   .kpi6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 1280px) {
@@ -289,23 +457,22 @@ a.kc:hover { border-color: var(--accent); text-decoration: none; }
 </style>
 </head>
 <body>
-<div class="app">
-  <div class="content">
-    <header class="top">
-      <a class="title" href="#/links" title="Websites">
-        <div class="shield"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
-        <div>
-          <h1>Security Monitoring Agent</h1>
-          <div class="subtitle">Monitor the security of your websites in one place.</div>
-        </div>
-      </a>
-      <div style="display:flex;gap:8px;align-items:center">
-        <a class="btn" id="historyBtn" href="#/history" title="Every scan run and its saved report">Scan history</a>
-        <a class="btn icon-btn" id="settingsBtn" href="#/settings" aria-label="Settings" title="Settings"></a>
-      </div>
+<div class="app" id="app">
+  <aside class="side" id="side">
+    <a class="brand" href="#/links" title="Dashboard"><span class="logo" id="logo"></span><span>Security Monitoring<br>Agent</span></a>
+    <nav class="nav" id="nav" aria-label="Main"></nav>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="btn icon-btn menu-btn" id="menuBtn" type="button" aria-label="Show or hide the menu"></button>
+      <label class="gsearch"><span id="gsIcon"></span><input id="gsearch" type="search" placeholder="Search websites, vulnerabilities, reports…" aria-label="Search websites" autocomplete="off"></label>
+      <a class="btn icon-btn bell spacer" id="bellBtn" href="#/check/vulnerabilities" aria-label="Alerts" title="Alerts"></a>
+      <a class="userchip" id="userChip" href="#/settings" title="Settings"></a>
     </header>
-    <div id="banner"></div>
-    <main id="view"></main>
+    <div class="content">
+      <div id="banner"></div>
+      <main id="view"></main>
+    </div>
   </div>
 </div>
 
@@ -355,13 +522,41 @@ a.kc:hover { border-color: var(--accent); text-decoration: none; }
   <form id="credForm" method="dialog">
     <div class="modal-h"><h3 id="credTitle">SSH access</h3></div>
     <div class="modal-b">
-      <div class="hint">Gives the agent read-only access to the website's files, so it can read every file and report dangerous or newly added ones. Replaces the site's current inside-scan login when you save.</div>
+      <div class="hint" id="credIntro">Gives the agent read-only access to the website's files, so it can read every file and report dangerous or newly added ones. Replaces the site's current inside-scan login when you save.</div>
+      <div id="credConnected" class="hidden">
+        <div class="hint"><b id="cStatus">Connected</b></div>
+        <dl class="kv" style="margin:12px 0">
+          <dt>Server</dt><dd id="cvServer">…</dd>
+          <dt>Website folder</dt><dd id="cvRoot">…</dd>
+          <dt>Files watched</dt><dd id="cvFiles">…</dd>
+          <dt>Last check</dt><dd id="cvLast">…</dd>
+        </dl>
+        <div class="hint">The files are checked every minute over SSH, together with the outside of the site.</div>
+        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+          <button class="btn" type="button" id="cChange">Change login</button>
+          <button class="btn outline" type="button" id="cDisconnect">Disconnect</button>
+        </div>
+      </div>
       <div id="credSsh">
-        <div class="field"><label for="cSshUser">SSH username</label><input id="cSshUser" type="text" placeholder="e.g. u123456789 or kleza_scan" autocomplete="off">
-          <div class="hint">From the hosting panel's SSH Access page.</div></div>
-        <div class="field"><label for="cSshKey">Private key</label>
+        <div class="field"><label for="cName">Site name</label><input id="cName" type="text" maxlength="60" autocomplete="off">
+          <div class="hint">Change it freely; the SSH login is kept.</div></div>
+        <div class="field"><label for="cUrl">Site link</label><input id="cUrl" type="text" autocomplete="off" spellcheck="false">
+          <div class="hint">Change it if the website moved to a new address; the SSH login is kept.</div></div>
+        <div class="field"><label for="cSshCmd">1. Paste your SSH login</label>
+          <input id="cSshCmd" type="text" placeholder="ssh -p 65002 u580294004@82.197.80.6" autocomplete="off" spellcheck="false">
+          <div class="hint">The line from your hosting panel's SSH Access page. Host, port and username are filled in for you.</div>
+          <div class="hint" id="cSshParsed"></div></div>
+        <details class="field"><summary>Edit details (host, port, username)</summary>
+          <div class="field"><label for="cSshHost">SSH host</label><input id="cSshHost" type="text" placeholder="blank = the site's domain" autocomplete="off"></div>
+          <div class="field"><label for="cSshPort">SSH port</label><input id="cSshPort" type="text" inputmode="numeric" placeholder="blank = try 22, 65002, 2222" autocomplete="off"></div>
+          <div class="field"><label for="cSshUser">SSH username</label><input id="cSshUser" type="text" placeholder="e.g. u123456789" autocomplete="off"></div>
+        </details>
+        <div class="field"><label for="cSshKey">2. Private key</label>
           <textarea id="cSshKey" rows="5" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;…&#10;-----END OPENSSH PRIVATE KEY-----" autocomplete="off" spellcheck="false"></textarea>
-          <div class="hint">A key without a passphrase. The login is tested before it is saved. Stored in a local <code>secrets/</code> file, never in reports.</div></div>
+          <div class="hint">A key without a passphrase. The login is tested before it is saved. Stored in a local <code>secrets/</code> file, never in reports.
+            No key yet? <button type="button" class="btn sm" id="cGenKey">Generate a key</button></div>
+          <div id="cPubWrap" class="hidden"><textarea id="cPubKey" rows="3" readonly spellcheck="false"></textarea>
+            <div class="hint">Add this public key in your hosting panel (SSH Access &rsaquo; SSH keys), then click Save.</div></div></div>
       </div>
       <div class="hint hidden" id="credLocked">This site's SSH login is defined in <code>config.yaml</code>; change it there.</div>
       <label class="check-row"><input type="checkbox" id="cScan" checked> Scan after saving</label>
@@ -441,6 +636,12 @@ const P = {
   star: '<path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/>',
   activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
   trash: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>',
+  menu: '<path d="M3 6h18M3 12h18M3 18h18"/>',
+  terminal: '<path d="m4 17 6-6-6-6M12 19h8"/>',
+  more: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+  radar: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><path d="M12 12 18 6"/>',
+  chevDown: '<path d="m6 9 6 6 6-6"/>',
+  dash: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
 };
 const CHECKS = [
   ["ssl", "SSL Monitoring", "SSL", P.lock, "Certificate validity, expiry, TLS versions"],
@@ -520,6 +721,16 @@ function siteInfo(site) {
 const ui = { sev: new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]), check: "all", q: "", sort: { key: "severity", dir: -1 },
              open: new Set(), showHistory: false, linkQ: "", ovQ: "", ovRisk: "", ovIssue: "", ovPage: 0, alertOpen: new Set(), updated: new Set() };
 const route = () => { const [page = "links", arg, sub] = location.hash.replace(/^#\/?/, "").split("/"); return { page: page === "dashboard" ? "links" : (page || "links"), arg: arg ? decodeURIComponent(arg) : null, sub: sub ? decodeURIComponent(sub) : null }; };
+const NAV = [  // [hash, label, icon, active when]
+  ["#/links", "Dashboard", "dash", r => r.page === "links" && !r.arg],
+  ["#/websites", "Websites", "globe", r => r.page === "websites" || (r.page === "links" && r.arg)],
+  ["#/history", "Scan History", "clock", r => r.page === "history"],
+  ["#/reports", "Reports", "report", r => r.page === "reports"],
+  ["#/check/vulnerabilities", "Vulnerabilities", "warn", r => r.page === "check" && r.arg === "vulnerabilities"],
+  ["#/check/malware", "Malware", "bug", r => r.page === "check" && r.arg === "malware"],
+  ["#/check/ssl", "SSL Monitoring", "lock", r => r.page === "check" && r.arg === "ssl"],
+  ["#/settings", "Settings", "gear", r => r.page === "settings"],
+];
 const go = h => { if (location.hash === h) render(); else location.hash = h; };
 addEventListener("hashchange", () => { ui.open.clear(); render(); scrollTo({ top: 0 }); });
 
@@ -563,10 +774,10 @@ function metrics(site) {
   const sslDays = sslF ? sslF.evidence.days_left : null;
   return {
     sslValid: sslDays != null && sslDays >= 0 && !F("ssl").some(f => /validation failed|TLS connection failed|not served over HTTPS/.test(f.title)),
-    changes: F("changes").filter(f => atLeast(f, "LOW")).length,
-    malware: F("malware").filter(f => atLeast(f, "MEDIUM")).length,
-    exposed: F("exposed_files").filter(f => atLeast(f, "MEDIUM")).length,
-    headerIssues: F("headers").filter(f => atLeast(f, "MEDIUM")).length,
+    changes: F("changes").filter(f => atLeast(f, "HIGH")).length,
+    malware: F("malware").filter(f => atLeast(f, "HIGH")).length,
+    exposed: F("exposed_files").filter(f => atLeast(f, "HIGH")).length,
+    headerIssues: F("headers").filter(f => atLeast(f, "HIGH")).length,
     vulnWorst: worst("vulnerabilities"),
   };
 }
@@ -582,21 +793,34 @@ function linksTable(sites, opts = {}) {
   const cols = opts.full ? CHECKS : CHECKS.filter(c => ["ssl", "malware", "compromise", "exposed_files", "headers", "vulnerabilities"].includes(c[0]));
   return `<div class="tbl-wrap"><table class="tbl">
     <thead><tr><th>#</th><th>Website</th><th>Status</th>${cols.map(c => `<th class="c">${esc(c[2])}</th>`).join("")}<th>Last Scan</th><th>Actions</th></tr></thead>
-    <tbody>${sites.map((s, i) => { const inf = siteInfo(s); return `<tr>
+    <tbody>${sites.map((s, i) => { const inf = siteInfo(s), nm = siteName(s); return `<tr>
       <td class="muted">${i + 1}</td>
-      <td><a class="site-link" href="#/links/${encodeURIComponent(s.slug)}" title="${esc(s.url)}">${esc(siteName(s))}</a></td>
+      <td><div class="site-cell"><span class="fav" style="background:${favColor(nm)}" aria-hidden="true">${esc(nm.charAt(0).toUpperCase())}</span>
+        <div style="min-width:0"><a class="site-link" href="#/links/${encodeURIComponent(s.slug)}" title="${esc(s.url)}">${esc(nm)}</a><div class="u">${esc(s.url)}</div></div></div></td>
       <td>${statusTag(inf.state)}</td>
       ${cols.map(c => `<td class="c">${checkIcon(inf.checks[c[0]])}</td>`).join("")}
-      <td class="muted" style="white-space:nowrap">${s.latest ? esc(fmtShortDT(s.latest.started_at)) : "Never"}</td>
-      <td style="white-space:nowrap"><a class="btn outline sm" href="#/links/${encodeURIComponent(s.slug)}">View Report</a>
-        ${DATA.server ? `<button class="btn sm" data-scan="${esc(s.slug)}" title="Scan now" aria-label="Scan ${esc(s.name)} now" ${scanning() ? "disabled" : ""}>${I(P.refresh, 14)}</button>` : ""}
-        ${DATA.server ? `<button class="btn sm" data-creds="${esc(s.slug)}" title="Give or change SSH access" aria-label="SSH access for ${esc(s.name)}">SSH Access</button>` : ""}
-        ${DATA.server && s.managed ? `<button class="btn sm danger" data-remove="${esc(s.slug)}" data-name="${esc(s.name)}" title="Remove ${esc(s.name)}" aria-label="Remove ${esc(s.name)}" ${scanning() ? "disabled" : ""}>${I(P.trash, 14)}</button>` : ""}</td>
+      <td><span class="when">${I(P.clock, 14)}${s.latest ? esc(fmtShortDT(s.latest.started_at)) : "Never"}</span></td>
+      <td style="white-space:nowrap"><a class="btn outline sm" href="#/links/${encodeURIComponent(s.slug)}">${I(P.report, 14)} View Report</a>
+        ${DATA.server ? `<button class="btn outline sm" data-creds="${esc(s.slug)}" title="Give or change SSH access" aria-label="SSH access for ${esc(s.name)}">${I(P.terminal, 14)} SSH</button>` : ""}
+        ${DATA.server ? `<details class="more"><summary aria-label="More actions for ${esc(s.name)}">${I(P.more, 16)}</summary><div class="menu">
+          <button type="button" data-scan="${esc(s.slug)}" ${scanning() ? "disabled" : ""}>${I(P.refresh, 14)} Scan now</button>
+          <button type="button" data-creds="${esc(s.slug)}">${I(P.terminal, 14)} Edit password</button>
+          ${s.managed ? `<button type="button" class="danger" data-remove="${esc(s.slug)}" data-name="${esc(s.name)}" ${scanning() ? "disabled" : ""}>${I(P.trash, 14)} Remove</button>` : ""}
+        </div></details>` : ""}</td>
     </tr>`; }).join("")}</tbody></table></div>`;
 }
+const favColor = name => { let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 55% 42%)`; };
+// The menu is fixed-position so the table's scroll area can't clip it; it is placed under its button when it opens
+document.addEventListener("toggle", e => {
+  const d = e.target; if (!d.matches || !d.matches("details.more") || !d.open) return;
+  const r = d.querySelector("summary").getBoundingClientRect(), m = d.querySelector(".menu");
+  m.style.top = `${r.bottom + 4}px`; m.style.left = `${Math.max(8, r.right - m.offsetWidth)}px`;
+}, true);
+addEventListener("scroll", () => document.querySelectorAll("details.more[open]").forEach(d => d.open = false), true);
+document.addEventListener("click", e => { document.querySelectorAll("details.more[open]").forEach(d => { if (!d.contains(e.target)) d.open = false; }); });
 const scanning = () => !!DATA.scan_status?.running;
 function bindScanButtons(root) { root.querySelectorAll("[data-scan]").forEach(b => b.onclick = e => { e.preventDefault(); startScan(b.dataset.scan || null); }); bindCredButtons(root); }
-function bindCredButtons(root) { root.querySelectorAll("[data-creds]").forEach(b => b.onclick = e => { e.preventDefault(); openCreds(b.dataset.creds); }); }
+function bindCredButtons(root) { root.querySelectorAll("[data-creds]").forEach(b => b.onclick = e => { e.preventDefault(); b.closest("details.more")?.removeAttribute("open"); openCreds(b.dataset.creds); }); }
 function bindRemoveButtons(root) { bindCredButtons(root); root.querySelectorAll("[data-remove]").forEach(b => b.onclick = e => { e.preventDefault(); removeSite(b.dataset.remove, b.dataset.name); }); }
 async function removeSite(slug, name) {
   if (!DATA.server) return;
@@ -608,16 +832,16 @@ async function removeSite(slug, name) {
 
 /* ================= pages ================= */
 const KPIS = [
-  { k: "ssl", label: "SSL Monitoring", ico: P.lock, cap: "Valid Certificates", value: M => M.filter(m => m.sslValid).length },
-  { k: "changes", label: "Suspicious Changes", ico: P.warn, cap: "Sites with changes", value: M => M.filter(m => m.changes > 0).length },
-  { k: "malware", label: "Malware Indicators", ico: P.bug, cap: "Potential Threats", value: M => M.filter(m => m.malware > 0).length },
-  { k: "exposed_files", label: "Exposed Files", ico: P.report, cap: "Sites with exposed files", value: M => M.filter(m => m.exposed > 0).length },
-  { k: "headers", label: "Security Headers", ico: P.shield, cap: "Sites with missing/weak", value: M => M.filter(m => m.headerIssues > 0).length },
-  { k: "vulnerabilities", label: "Vulnerabilities", ico: P.eye, cap: "Sites with issues", value: M => M.filter(m => m.vulnWorst >= 2).length },
+  { k: "ssl", label: "SSL Monitoring", ico: P.lock, cap: "Invalid Certificates", value: M => M.filter(m => !m.sslValid).length },
+  { k: "changes", label: "Suspicious Changes", ico: P.warn, cap: "High-risk sites", value: M => M.filter(m => m.changes > 0).length },
+  { k: "malware", label: "Malware Indicators", ico: P.bug, cap: "High-risk sites", value: M => M.filter(m => m.malware > 0).length },
+  { k: "exposed_files", label: "Exposed Files", ico: P.report, cap: "High-risk sites", value: M => M.filter(m => m.exposed > 0).length },
+  { k: "headers", label: "Security Headers", ico: P.shield, cap: "High-risk sites", value: M => M.filter(m => m.headerIssues > 0).length },
+  { k: "vulnerabilities", label: "Vulnerabilities", ico: P.eye, cap: "High-risk sites", value: M => M.filter(m => m.vulnWorst >= 3).length },
 ];
 function alertItems() {
   const items = [];
-  DATA.sites.forEach(s => (s.latest?.findings || []).forEach(f => { if (atLeast(f, "MEDIUM")) items.push({ f, s, t: s.latest.started_at }); }));
+  DATA.sites.forEach(s => (s.latest?.findings || []).forEach(f => { if (atLeast(f, "HIGH")) items.push({ f, s, t: s.latest.started_at }); }));
   return items.sort((a, b) => RANK[b.f.severity] - RANK[a.f.severity] || new Date(b.t) - new Date(a.t));
 }
 const CHECK_ICON = Object.fromEntries(CHECKS.map(c => [c[0], c[3]]));
@@ -633,15 +857,114 @@ function recommendations(limit) {
   return [...groups.values()].sort((a, b) => b.sev - a.sev || b.sites.size - a.sites.size).slice(0, limit);
 }
 
+/* ---- trends: issues per check per day, from each site's scan history (rows saved with check_issues) ---- */
+const TREND_KEYS = { vulnerabilities: ["vulnerabilities", "wordpress"] };   // WordPress findings are shown under Vulnerabilities
+const trendDays = n => { const t = new Date(); t.setHours(0, 0, 0, 0);
+  return Array.from({ length: n }, (_, i) => { const d = new Date(t); d.setDate(t.getDate() - (n - 1 - i)); return d; }); };
+// One value per day: the sum over sites of their last known issue count that day; null before any history exists
+function trendSeries(keys, n) {
+  return trendDays(n).map(day => {
+    const end = day.getTime() + 864e5; let sum = 0, seen = false;
+    for (const s of DATA.sites) {
+      let row = null;
+      for (const h of s.history || []) { if (!h.check_issues) continue; if (+new Date(h.started_at) < end) row = h; else break; }
+      if (row) { seen = true; for (const k of keys) sum += row.check_issues[k] || 0; }
+    }
+    return seen ? sum : null;
+  });
+}
+function sparkSvg(series, color, now, id) {
+  let pts = series.map((v, i) => v == null ? null : [i / (series.length - 1), v]).filter(Boolean);
+  if (pts.length < 2) pts = [[0, now], [1, now]];
+  const W = 200, H = 44, lo = Math.min(...pts.map(p => p[1])), hi = Math.max(...pts.map(p => p[1])), span = hi - lo || 1;
+  const xy = ([x, v]) => `${(x * W).toFixed(1)},${(hi === lo ? H / 2 : H - 5 - ((v - lo) / span) * (H - 12)).toFixed(1)}`;
+  const line = pts.map((p, i) => (i ? "L" : "M") + xy(p)).join(" ");
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="sg-${id}" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="${color}" stop-opacity=".22"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
+    <path d="${line} L${W},${H} L0,${H} Z" fill="url(#sg-${id})"/><path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
+}
 function kpiGrid() {
-  const M = DATA.sites.map(metrics).filter(Boolean);
+  const M = DATA.sites.map(metrics).filter(Boolean), n = DATA.sites.length;
   const card = d => {
-    const c = CAT_COLOR[d.k];
-    return `<div class="card kc">
-      <div class="t1"><span class="ic" style="background:${tint(c)};color:${c}">${I(d.ico, 24)}</span>
-        <div style="min-width:0"><div class="l">${d.label}</div><div class="v">${M.length ? d.value(M) : "—"}</div><div class="s">${d.cap}</div></div></div></div>`;
+    const c = CAT_COLOR[d.k], value = M.length ? d.value(M) : null;
+    let series = trendSeries(TREND_KEYS[d.k] || [d.k], 7);
+    const pts = series.filter(x => x != null);
+    let delta = "";
+    if (pts.length >= 2 && pts[0] > 0) {
+      const pct = Math.round((pts[pts.length - 1] - pts[0]) / pts[0] * 100);
+      if (pct) delta = `<span class="delta ${pct > 0 ? "bad" : "good"}" title="Change over the last 7 days">${pct > 0 ? "↑ +" : "↓ "}${pct}%</span>`;
+    }
+    return `<div class="card kc clickable" data-go="#/check/${d.k}" role="link" tabindex="0" title="Open ${esc(d.label)}">
+      <div class="top1"><div class="t1"><span class="ic" style="background:${tint(c)};color:${c}">${I(d.ico, 24)}</span>
+        <div style="min-width:0"><div class="l">${d.label}</div><div class="v">${value ?? "—"}</div><div class="s">${d.cap}</div></div></div>${delta}</div>
+      <div class="spark">${sparkSvg(series, c, value ?? 0, d.k)}</div></div>`;
   };
   return `<div class="grid kpi6">${KPIS.map(card).join("")}</div>`;
+}
+
+/* ---- scan progress ---- */
+const inText = d => { if (!d) return "—"; const m = Math.round((d - Date.now()) / 60000); return m <= 0 ? "Any moment" : m < 90 ? `In ${m} minute${m === 1 ? "" : "s"}` : `At ${fmtShortDT(d.toISOString())}`; };
+/* ---- security overview (lines), website status (donut), recent vulnerabilities ---- */
+const OV = [["vulnerabilities", "Vulnerabilities"], ["changes", "Suspicious Changes"], ["malware", "Malware"], ["exposed_files", "Exposed Files"]];
+function overviewCard() {
+  const n = ui.ovDays || 7, days = trendDays(n), W = 640, H = 230, L = 34, R = 12, T = 12, B = 28;
+  const data = OV.map(([k, label]) => ({ k, label, color: CAT_COLOR[k], vals: trendSeries(TREND_KEYS[k] || [k], n) }));
+  const all = data.flatMap(d => d.vals).filter(v => v != null);
+  const head = `<div class="card-h"><span style="color:var(--accent)">${I(P.shield, 20)}</span><div><h2>Security Overview</h2><div class="muted">Issues found in the last ${n} days</div></div>
+    <div class="right"><select id="ovDays" aria-label="Period">${[7, 14, 30].map(d => `<option value="${d}" ${d === n ? "selected" : ""}>Last ${d} Days</option>`).join("")}</select></div></div>`;
+  if (!all.length) return `<div class="card">${head}<div class="empty-chart">The trend fills in as scans run. It needs the next scan to start recording.</div></div>`;
+  const step = Math.max(1, Math.ceil(Math.max(...all, 1) / 4)), top = step * 4;
+  const x = i => L + (n === 1 ? 0 : i * (W - L - R) / (n - 1)), y = v => T + (H - T - B) * (1 - v / top);
+  const grid = [0, 1, 2, 3, 4].map(i => `<line class="gridline" x1="${L}" x2="${W - R}" y1="${y(i * step)}" y2="${y(i * step)}"/><text class="axis" x="${L - 8}" y="${y(i * step) + 4}" text-anchor="end">${i * step}</text>`).join("");
+  const every = Math.ceil(n / 7);
+  const xl = days.map((d, i) => i % every === 0 || i === n - 1 ? `<text class="axis" x="${x(i)}" y="${H - 8}" text-anchor="middle">${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</text>` : "").join("");
+  const lines = data.map(d => {
+    let path = "", pen = false;
+    d.vals.forEach((v, i) => { if (v == null) { pen = false; return; } path += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)} `; pen = true; });
+    const dots = d.vals.map((v, i) => v == null ? "" : `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="4" fill="${d.color}" stroke="var(--surface)" stroke-width="2"/>`).join("");
+    return `<path d="${path}" fill="none" stroke="${d.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>${dots}`;
+  }).join("");
+  return `<div class="card">${head}<div class="chart" id="ovChart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Issues per day by category">${grid}${xl}
+      <line id="ovCross" class="gridline" y1="${T}" y2="${H - B}" x1="0" x2="0" style="stroke:var(--muted);display:none"/>${lines}</svg></div>
+    <div class="ov-legend">${data.map(d => `<span><i style="background:${d.color}"></i>${esc(d.label)}</span>`).join("")}</div></div>`;
+}
+function bindOverview(v) {
+  const sel = v.querySelector("#ovDays"); if (sel) sel.onchange = () => { ui.ovDays = +sel.value; render(); };
+  const box = v.querySelector("#ovChart"); if (!box) return;
+  const n = ui.ovDays || 7, days = trendDays(n), svg = box.querySelector("svg"), cross = svg.querySelector("#ovCross");
+  const series = OV.map(([k, label]) => ({ label, color: CAT_COLOR[k], vals: trendSeries(TREND_KEYS[k] || [k], n) }));
+  box.onmousemove = ev => {
+    const r = svg.getBoundingClientRect(), fx = (ev.clientX - r.left) / r.width * 640;
+    const i = Math.max(0, Math.min(n - 1, Math.round((fx - 34) / ((640 - 34 - 12) / Math.max(1, n - 1)))));
+    cross.setAttribute("x1", 34 + i * (640 - 34 - 12) / Math.max(1, n - 1)); cross.setAttribute("x2", cross.getAttribute("x1")); cross.style.display = "";
+    showTip(`<div class="tt-h">${esc(days[i].toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }))}</div>` +
+      series.map(s => `<div class="tt-r"><span><i class="dot" style="background:${s.color}"></i>${esc(s.label)}</span><b>${s.vals[i] ?? "—"}</b></div>`).join(""), ev);
+  };
+  box.onmouseleave = () => { cross.style.display = "none"; hideTip(); };
+}
+function donutCard() {
+  const counts = { safe: 0, warn: 0, risk: 0, none: 0 };
+  DATA.sites.forEach(s => counts[siteInfo(s).state]++);
+  const total = DATA.sites.length, R = 58, C = 2 * Math.PI * R;
+  const parts = [["safe", "Healthy", "var(--good)"], ["warn", "Warnings", "var(--warn)"], ["risk", "Issues", "var(--bad)"], ["none", "Not scanned", "var(--na)"]].filter(p => counts[p[0]]);
+  let off = 0;
+  const arcs = parts.map(([k, , c]) => { const len = counts[k] / total * C, gap = parts.length > 1 ? 2 : 0;
+    const el = `<circle cx="80" cy="80" r="${R}" fill="none" stroke="${c}" stroke-width="20" stroke-dasharray="${Math.max(0, len - gap)} ${C}" stroke-dashoffset="${-off}" transform="rotate(-90 80 80)"/>`; off += len; return el; }).join("");
+  return `<div class="card"><div class="card-h"><span style="color:var(--accent)">${I(P.shieldCheck, 20)}</span><h2>Website Security Status</h2></div>
+    <div class="muted" style="margin:-6px 0 8px">Total websites: ${total}</div>
+    <div class="donut-box"><svg width="160" height="160" viewBox="0 0 160 160" role="img" aria-label="${parts.map(p => `${counts[p[0]]} ${p[1]}`).join(", ")}">
+      <circle cx="80" cy="80" r="${R}" fill="none" stroke="var(--grid)" stroke-width="20"/>${arcs}
+      <text x="80" y="82" text-anchor="middle" font-size="30" font-weight="700" fill="var(--text)">${total}</text><text x="80" y="102" text-anchor="middle" font-size="12" fill="var(--muted)">Websites</text></svg>
+      <div class="lg">${parts.map(([k, l, c]) => `<div><i class="dot" style="background:${c}"></i>${l}<span class="n"><b>${counts[k]}</b> (${Math.round(counts[k] / total * 100)}%)</span></div>`).join("")}</div></div></div>`;
+}
+function recentCard() {
+  const items = alertItems().slice(0, 5);
+  const row = ({ f, s, t }) => `<li data-go="#/links/${encodeURIComponent(s.slug)}/${esc(f.check)}">${alertIcon(f.severity)}
+    <div style="min-width:0"><div class="t" title="${esc(f.title)}">${esc(f.title)}</div><div class="u">${esc(new URL(s.url).hostname)}</div></div>
+    <span class="tm">${esc(ago(t))}</span><span class="sevtag ${RANK[f.severity] >= 3 ? "high" : "medium"}">${esc(f.severity[0] + f.severity.slice(1).toLowerCase())}</span></li>`;
+  return `<div class="card"><div class="card-h"><span style="color:var(--bad)">${I(P.alert, 20)}</span><h2>Recent Vulnerabilities</h2>
+    <div class="right"><a class="btn sm outline" href="#/check/vulnerabilities">View All</a></div></div>
+    ${items.length ? `<ul class="rv">${items.map(row).join("")}</ul>` : `<div class="empty-chart">No issues found.</div>`}</div>`;
 }
 
 
@@ -656,24 +979,64 @@ function benefits() {
   </section>`;
 }
 
-function pageLinks(v) {
-  const filter = ui.linkState;
-  const sites = DATA.sites.filter(s => !filter || siteInfo(s).state === filter);
-  v.innerHTML = `${kpiGrid()}
-  <div class="card mt">
-    <div class="card-h"><span style="color:var(--accent)">${I(P.link, 20)}</span><h2>Websites</h2>
+function websitesCard() {
+  const filter = ui.linkState, q = (ui.linkQ || "").trim().toLowerCase();
+  const sites = DATA.sites.filter(s => (!filter || siteInfo(s).state === filter) && (!q || `${siteName(s)} ${s.url}`.toLowerCase().includes(q)));
+  return `<div class="card mt">
+    <div class="card-h"><span style="color:var(--accent)">${I(P.globe, 20)}</span><div><h2>Websites</h2><div class="muted">Monitor and analyze the security status of your websites</div></div>
       <div class="right">
         <select id="stateSel" aria-label="Filter by status"><option value="">All statuses</option>
           ${["safe", "warn", "risk", "none"].map(k => `<option value="${k}" ${filter === k ? "selected" : ""}>${STATE[k].label}</option>`).join("")}</select>
-        <button class="btn primary" id="linksAdd">${I(P.add || P.link, 16)} Add Website</button>
+        <label class="search">${I(P.search, 15)}<input id="siteQ" type="search" placeholder="Search websites…" value="${esc(ui.linkQ || "")}" aria-label="Search websites"></label>
+        <button class="btn primary" id="linksAdd">${I(P.add, 16)} Add Website</button>
       </div></div>
-    ${linksTable(sites, { full: true })}
+    ${sites.length || !q ? linksTable(sites, { full: true }) : `<div class="empty"><h3>No match</h3>No website matches "${esc(ui.linkQ)}".</div>`}
   </div>`;
+}
+function bindWebsites(v) {
   v.querySelector("#stateSel").onchange = e => { ui.linkState = e.target.value || null; render(); };
+  const q = v.querySelector("#siteQ");
+  q.oninput = () => { ui.linkQ = q.value; const pos = q.selectionStart; render(); const n = document.getElementById("siteQ"); n.focus(); n.setSelectionRange(pos, pos); };
   v.querySelector("#linksAdd").onclick = openAdd;
+  v.querySelectorAll("[data-go]").forEach(li => li.onclick = () => go(li.dataset.go));
   bindScanButtons(v);
   bindRemoveButtons(v);
 }
+function pageLinks(v) {
+  v.innerHTML = `<div>${kpiGrid()}</div>
+    <div class="grid row3 mt">${overviewCard()}${donutCard()}${recentCard()}</div>
+    ${websitesCard()}`;
+  v.querySelectorAll(".kc[data-go]").forEach(c => {
+    c.onclick = () => go(c.dataset.go);
+    c.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(c.dataset.go); } };
+  });
+  bindOverview(v);
+  bindWebsites(v);
+}
+function pageWebsites(v) { v.innerHTML = websitesCard().replace('class="card mt"', 'class="card"'); bindWebsites(v); }
+
+// Every finding of one check across all websites (sidebar: Vulnerabilities, Malware, SSL Monitoring)
+function pageAllFindings(v, key) {
+  const meta = CHECKS.find(c => c[0] === key);
+  if (!meta) { location.hash = "#/links"; return; }
+  const rows = DATA.sites.flatMap(s => (s.latest?.findings || []).filter(f => f.check === key && RANK[f.severity] >= 3).map(f => ({ f, s })))
+    .sort((a, b) => RANK[b.f.severity] - RANK[a.f.severity] || siteName(a.s).localeCompare(siteName(b.s)));
+  v.innerHTML = `<div class="card"><div class="card-h"><span style="color:var(--accent)">${I(meta[3], 20)}</span><div><h2>${esc(meta[1])}</h2><div class="muted">${esc(meta[4])}</div></div>
+      <div class="right muted">${rows.length} issue${rows.length === 1 ? "" : "s"} across ${DATA.sites.length} website${DATA.sites.length === 1 ? "" : "s"}</div></div>
+    ${rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Severity</th><th>Finding</th><th>Website</th><th>Last scan</th></tr></thead><tbody>
+      ${rows.map(({ f, s }) => `<tr class="link" data-go="#/links/${encodeURIComponent(s.slug)}/${esc(key)}"><td>${pill(f.severity)}</td>
+        <td><div style="font-weight:600">${esc(f.title)}</div>${f.detail ? `<div class="muted" style="max-width:640px">${esc(f.detail.slice(0, 160))}</div>` : ""}</td>
+        <td><a class="site-link" href="#/links/${encodeURIComponent(s.slug)}/${esc(key)}">${esc(siteName(s))}</a></td><td class="muted">${esc(ago(s.latest.started_at))}</td></tr>`).join("")}
+      </tbody></table></div>` : `<div class="empty"><h3>No high-risk issues</h3>Nothing high or critical to report for this check on any website.</div>`}</div>`;
+  v.querySelectorAll("[data-go]").forEach(r => r.onclick = e => { if (e.target.closest("a")) return; go(r.dataset.go); });
+}
+
+// Tinted severity chip (High red, Medium amber, Low blue, PASS green)
+const SEV_CHIP = { CRITICAL: ["Critical", "var(--bad)", "var(--bad-soft)"], HIGH: ["High", "var(--bad)", "var(--bad-soft)"],
+  MEDIUM: ["Medium", "#a86f00", "var(--warn-soft)"], LOW: ["Low", "var(--accent)", "var(--info-soft)"], INFO: ["Info", "var(--text-2)", "var(--surface-2)"],
+  PASS: ["PASS", "var(--good)", "var(--good-soft)"] };
+const sevChip = sev => { const [l, c, bg] = SEV_CHIP[sev] || SEV_CHIP.INFO;
+  return `<span class="chip2" style="color:${c};background:${bg}"><i class="dot" style="background:${c}"></i>${sev === "PASS" ? l : l.toUpperCase()}</span>`; };
 
 function facts(r) {
   const f = r.findings;
@@ -682,12 +1045,12 @@ function facts(r) {
   const dom = f.find(x => x.check === "dns" && /Domain registration expires in (-?\d+)/.test(x.title));
   const tp = f.find(x => x.check === "third_party" && /third-party domain/.test(x.title));
   const exposed = f.filter(x => x.check === "exposed_files" && RANK[x.severity] >= 1).length;
-  const item = (ico, val, l) => `<div class="card fact"><div class="ico">${I(ico)}</div><div><div class="v">${val}</div><div class="l">${l}</div></div></div>`;
+  const item = (ico, val, l, sub) => `<div class="card fact"><div class="ico">${I(ico)}</div><div><div class="l">${l}</div><div class="v">${val}</div><div class="sub">${sub}</div></div></div>`;
   return `<div class="grid facts mt">
-    ${item(P.lock, ssl ? `${ssl.evidence.days_left} days` : "—", "SSL certificate expires")}
-    ${item(P.globe, dom ? `${dom.title.match(/(-?\d+)/)[1]} days` : "—", "Domain registration expires")}
-    ${item(P.link, tp ? tp.title.match(/\d+/)[0] : "—", "Third-party domains in use")}
-    ${item(P.report, exposed, "Exposed file issues")}
+    ${item(P.lock, ssl ? `${ssl.evidence.days_left} days` : "—", "SSL certificate expires", ssl ? "Renew before it expires" : "No expiry information available")}
+    ${item(P.globe, dom ? `${dom.title.match(/(-?\d+)/)[1]} days` : "—", "Domain registration expires", dom ? "Renew the domain in time" : "No expiry information available")}
+    ${item(P.link, tp ? tp.title.match(/\d+/)[0] : "—", "Third-party domains in use", tp ? "External domains detected" : "None detected")}
+    ${item(P.report, exposed, "Exposed file issues", exposed ? "Sensitive files discovered" : "Nothing exposed")}
   </div>`;
 }
 
@@ -714,42 +1077,62 @@ function pageHistory(v) {
   v.querySelectorAll("[data-hsite]").forEach(b => b.onclick = () => { historySite = b.dataset.hsite; pageHistory(v); });
 }
 
+// A site's report: header, risk score and issue counts, key facts, then one card per security check
 function pageSite(v, site) {
-  const r = site.latest, inf = siteInfo(site);
-  const head = `<a class="back" href="#/links">${I(P.back, 16)} All links</a>
-    <div class="card"><div class="site-head">
-      <div><h2>${esc(site.name)}</h2><a href="${esc(site.url)}" target="_blank" rel="noopener noreferrer">${esc(site.url)}</a></div>
-      ${statusTag(inf.state)}
+  const r = site.latest, inf = siteInfo(site), nm = siteName(site);
+  const crumbs = `<nav class="crumbs" aria-label="Breadcrumb"><a href="#/websites">${I(P.back, 12, 2.4)} Back to Websites</a><span>/</span><a href="#/links">All Links</a><span>/</span><b>${esc(new URL(site.url).hostname.replace(/^www\./, ""))}</b></nav>`;
+  const head = `${crumbs}
+    <div class="card"><div class="site-head2">
+      <span class="gico">${I(P.globe, 28, 1.6)}</span>
+      <div style="min-width:0"><div class="nm2"><h2>${esc(nm)}</h2>${statusTag(inf.state)}</div>
+        <a href="${esc(site.url)}" target="_blank" rel="noopener noreferrer" class="ext">${esc(site.url)} ${I('<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/>', 12)}</a>
+        <div class="muted">Website security report and analysis</div></div>
+      ${r ? `<div class="lastsc">${I('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>', 22, 1.6)}<div><div class="muted">Last scanned</div><b>${esc(fmtDate(r.started_at))}</b><div class="muted">${esc(ago(r.started_at))}</div></div></div>` : ""}
       <div class="actions">
-        ${DATA.server ? `<button class="btn sm" data-creds="${esc(site.slug)}">Edit credentials</button>` : ""}
+        ${DATA.server ? `<button class="btn sm" data-creds="${esc(site.slug)}">${I(P.terminal, 14)} SSH Access</button>` : ""}
         ${r ? `<a class="btn sm" href="${fileUrl(site.slug + "/latest.md")}" target="_blank">${I(P.download, 14)} Report (.md)</a>
                <a class="btn sm" href="${fileUrl(site.slug + "/latest.json")}" target="_blank">${I(P.download, 14)} JSON</a>
-               <a class="btn sm" href="${fileUrl(site.slug + "/latest.xlsx")}" download="security-report-${esc(site.slug)}.xlsx">${I(P.download, 14)} Excel</a>` : ""}      </div></div></div>`;
+               <a class="btn sm" href="${fileUrl(site.slug + "/latest.xlsx")}" download="security-report-${esc(site.slug)}.xlsx">${I(P.download, 14)} Excel</a>` : ""}</div></div></div>`;
   if (!r) {
-    v.innerHTML = head + `<div class="card empty mt"><h3>Not scanned yet</h3>${esc(scheduleText()[0])}. This site will be analysed in the next scheduled scan.</div>`;
+    v.innerHTML = head + `<div class="card empty mt"><h3>Not scanned yet</h3>${esc(scheduleText()[0])}. ${DATA.settings?.schedule_mode === "watch" ? "Click Scan Now for the first full scan." : "This site will be analysed in the next scheduled scan."}
+      ${DATA.server ? `<div style="margin-top:12px"><button class="btn primary" data-scan="${esc(site.slug)}">${I(P.refresh, 15)} Scan Now</button></div>` : ""}</div>`;
     bindScanButtons(v); return;
   }
   const hist = site.history || [], prev = hist.length > 1 ? hist[hist.length - 2] : null, c = r.severity_counts;
-  const delta = (cur, old, invert) => { if (old == null) return ""; const d = cur - old; if (!d) return "no change vs previous";
-    const better = invert ? d < 0 : d > 0; return `<span style="color:${better ? "var(--good)" : "var(--bad)"}">${d > 0 ? "▲" : "▼"} ${Math.abs(d)}</span> vs previous`; };
+  const score = r.risk_score, band = score >= 80 ? ["Low Risk", "var(--good)", "Your website looks healthy."]
+    : score >= 50 ? ["Medium Risk", "var(--warn)", "Your website has some security issues that need attention."]
+    : ["High Risk", "var(--bad)", "Your website has serious security issues that need action now."];
+  const RR = 30, CC = 2 * Math.PI * RR;
+  const gauge = `<svg width="78" height="78" viewBox="0 0 78 78" role="img" aria-label="Risk score ${score} out of 100"><circle cx="39" cy="39" r="${RR}" fill="none" stroke="var(--grid)" stroke-width="9"/>
+    <circle cx="39" cy="39" r="${RR}" fill="none" stroke="${band[1]}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${(score / 100 * CC).toFixed(1)} ${CC}" transform="rotate(-90 39 39)"/>
+    <text x="39" y="41" text-anchor="middle" font-size="20" font-weight="700" fill="var(--text)">${score}</text><text x="39" y="54" text-anchor="middle" font-size="9" fill="var(--muted)">/ 100</text></svg>`;
+  const rd = prev ? score - prev.risk_score : 0;
+  const riskDelta = !prev ? "" : rd ? `<div style="color:${rd > 0 ? "var(--good)" : "var(--bad)"};font-size:12px;font-weight:600">${rd > 0 ? "▲" : "▼"} ${Math.abs(rd)} vs previous scan</div>` : `<div class="muted">No change vs previous scan</div>`;
+  const dCount = (cur, old) => { if (old == null) return "No earlier scan to compare"; const d = cur - old; if (!d) return "No change vs previous";
+    return `<span style="color:${d < 0 ? "var(--good)" : "var(--bad)"};font-weight:600">${d > 0 ? "▲" : "▼"} ${Math.abs(d)}</span> vs previous`; };
+  const ISS = [["CRITICAL", "Critical Issues", P.alert, "var(--bad)"], ["HIGH", "High Issues", P.warn, "#e8772e"], ["MEDIUM", "Medium Issues", P.warn, "#e0a100"], ["LOW", "Low Issues", P.info, "var(--accent)"]];
   v.innerHTML = head + `
-    <div class="grid kpis mt">
-      <div class="card kpi"><div class="label">Risk score</div><div class="value">${r.risk_score}<span style="font-size:14px;color:var(--muted)">/100</span></div><div class="sub">${delta(r.risk_score, prev?.risk_score, false) || "Higher is safer"}</div></div>
-      <div class="card kpi"><div class="label">Last scan</div><div class="value" style="font-size:18px;margin-top:10px">${esc(ago(r.started_at))}</div><div class="sub">${esc(fmtDate(r.started_at))}</div></div>
-      ${["CRITICAL", "HIGH", "MEDIUM", "LOW"].map(s => `<div class="card kpi"><div class="label">${pill(s)}</div>
-        <div class="value">${c[s] || 0}</div><div class="sub">${delta(c[s] || 0, prev?.severity_counts?.[s], true) || "findings"}</div></div>`).join("")}
+    <div class="grid kpis2 mt">
+      <div class="card risk"><div class="muted" style="font-weight:600;color:var(--text)">Risk Score</div><div class="rk">${gauge}<div><b style="color:${band[1] === "var(--warn)" ? "#d99400" : band[1]}">${band[0]}</b>
+        <div class="muted" style="margin:2px 0 4px">${band[2]}</div>${riskDelta}</div></div></div>
+      <div class="card lastscan2"><div style="display:flex;gap:10px;align-items:center"><span class="ico2">${I(P.clock, 20)}</span><div><div class="muted">Last Scan</div><div class="big">${esc(ago(r.started_at))}</div><div class="muted">${esc(fmtDate(r.started_at))}</div></div></div>
+        ${DATA.server ? `<button class="btn primary" type="button" data-scan="${esc(site.slug)}" ${scanning() ? "disabled" : ""}>${I(P.refresh, 15)} Scan Now</button>` : ""}</div>
+      ${ISS.map(([s, label, ico, col]) => `<div class="card issue"><div style="display:flex;gap:10px;align-items:center"><span class="ico2" style="color:${col};background:color-mix(in srgb, ${col} 13%, var(--surface))">${I(ico, 20)}</span><span class="muted" style="font-weight:600;color:var(--text)">${label}</span></div>
+        <div class="big" style="font-size:28px">${c[s] || 0}</div><div class="muted">${dCount(c[s] || 0, prev?.severity_counts?.[s])}</div></div>`).join("")}
     </div>
     ${r.findings.some(f => f.check === "compromise" && (f.evidence?.pages || []).some(p => p.code)) ? `
     <a class="card mt" href="#/links/${encodeURIComponent(site.slug)}/compromise" style="display:block;border-color:var(--bad);color:inherit;text-decoration:none">
       <b style="color:var(--bad)">Hidden spam code found</b> in Spam &amp; Compromise &mdash; open it to see the injected code and the pages it is on.</a>` : ""}
     ${facts(r)}
-    <div class="section-title">Security checks <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">— open a check to see its findings</span></div>
+    <div class="sc-head"><div><h2>Security Checks</h2><div class="muted">Open a check to see detailed findings and recommendations.</div></div>
+      <div class="sc-pills">${["CRITICAL", "HIGH", "MEDIUM", "LOW"].map(s => { const [l, col, bg] = SEV_CHIP[s];
+        return `<span class="chip2" style="color:${col};background:${bg}"><i class="dot" style="background:${col}"></i>${c[s] || 0} ${l}</span>`; }).join("")}</div></div>
     <div class="grid modules">${CHECKS.map(([k, label, , ico, desc]) => {
       const fs = r.findings.filter(f => f.check === k), issues = fs.filter(f => RANK[f.severity] >= 1);
       const worst = fs.reduce((w, f) => RANK[f.severity] > RANK[w] ? f.severity : w, "INFO"), ran = k in (r.checks || {});
       return `<a class="card module" href="#/links/${encodeURIComponent(site.slug)}/${k}" title="View ${esc(label)} details">
-        <div class="head"><span class="ico">${I(ico)}</span>${esc(label)}</div><div class="desc">${esc(desc)}</div>
-        <div class="foot">${!ran ? '<span class="muted">Not run</span>' : issues.length ? pill(worst) : `<span class="pill"><span class="dot" style="background:var(--good)"></span>PASS</span>`}
+        <div class="head"><span class="ico">${I(ico)}</span><div><div>${esc(label)}</div><div class="desc">${esc(desc)}</div></div></div>
+        <div class="foot">${!ran ? '<span class="muted">Not run</span>' : sevChip(issues.length ? worst : "PASS")}
         <span class="muted" style="display:flex;align-items:center;gap:4px">${ran ? `${issues.length} issue${issues.length === 1 ? "" : "s"}` : ""} <span style="display:inline-flex;transform:scaleX(-1)">${I(P.back, 13, 2.4)}</span></span></div></a>`; }).join("")}</div>`;
   bindScanButtons(v);
 }
@@ -762,33 +1145,71 @@ function pageCheckDetail(v, site, check) {
   const fs = r.findings.filter(f => f.check === k).slice().sort((a, b) => RANK[b.severity] - RANK[a.severity] || a.title.localeCompare(b.title));
   const issues = fs.filter(f => RANK[f.severity] >= 1);
   const worst = fs.reduce((w, f) => RANK[f.severity] > RANK[w] ? f.severity : w, "INFO");
-  const status = !ran ? '<span class="pill"><span class="dot" style="background:var(--na)"></span>NOT RUN</span>'
-    : issues.length ? pill(worst) : '<span class="pill"><span class="dot" style="background:var(--good)"></span>PASS</span>';
   const col = CAT_COLOR[catOf(k)];
+  const risk = !ran ? ["NOT RUN", "var(--text-2)", "var(--surface-2)"] : worst === "CRITICAL" || worst === "HIGH" ? ["HIGH RISK", "var(--bad)", "var(--bad-soft)"]
+    : worst === "MEDIUM" ? ["MEDIUM RISK", "#a86f00", "var(--warn-soft)"] : worst === "LOW" ? ["LOW RISK", "var(--accent)", "var(--info-soft)"] : ["PASS", "var(--good)", "var(--good-soft)"];
   const shown = fs.filter(f => !isHidden(site, f));  // ignored findings are already removed by the server
-  const findingCard = f => `
-      <div class="card"><div style="display:flex;gap:10px;align-items:baseline;margin-bottom:6px">${pill(f.severity)}<b style="font-size:15px">${esc(f.title)}</b>
-        ${DATA.server && wpFix(f) ? `<button type="button" class="btn sm primary" style="margin-left:auto" data-update="${esc(cardKey(f))}"
-          title="${esc(wpFix(f).label)}">${I(wpFix(f).button === "Update" ? P.refresh : P.trash, 14)} ${esc(wpFix(f).button)}</button>` : ""}
-        ${DATA.server ? `<button type="button" class="btn sm" style="${wpFix(f) ? "" : "margin-left:auto"}" data-ignore="${esc(cardKey(f))}"
-          title="Hide this issue for good (you can restore it in Settings)">Ignore</button>` : ""}</div>
+  const cnt = s => shown.filter(f => f.severity === s).length;
+  const COUNT_CARDS = [["Critical Issues", P.alert, "var(--bad)", cnt("CRITICAL")], ["High Issues", P.warn, "#e8772e", cnt("HIGH")],
+    ["Medium Issues", P.warn, "#e0a100", cnt("MEDIUM")], ["Low Issues", P.info, "var(--accent)", cnt("LOW")],
+    ["Total Issues", '<path d="M5 21V10M12 21V3M19 21v-7"/>', "#6b5bd6", cnt("CRITICAL") + cnt("HIGH") + cnt("MEDIUM") + cnt("LOW")]];
+  // Evidence as numbered lines in a dark block, like a code viewer
+  const evidenceBlock = f => {
+    if (!f.evidence || !Object.keys(f.evidence).length) return "";
+    const lines = JSON.stringify(f.evidence, null, 2).split("\n").slice(0, 200);
+    return `<div class="ev"><div class="ev-h">${I(P.report, 14)} Technical evidence</div><div class="codeblock"><button type="button" class="copy" data-copy="${esc(JSON.stringify(f.evidence, null, 2))}">Copy</button>
+      <pre>${lines.map((l, i) => `<span class="ln">${i + 1}</span>${esc(l)}`).join("\n")}</pre></div></div>`;
+  };
+  const findingRow = (f, i) => {
+    const fix = DATA.server && wpFix(f), [lbl, col2, bg] = SEV_CHIP[f.severity] || SEV_CHIP.INFO;
+    return `<details class="frow" data-sev="${f.severity}" data-text="${esc((f.title + " " + (f.detail || "")).toLowerCase())}" ${i === 0 ? "open" : ""}>
+      <summary><span class="chip2" style="color:${col2};background:${bg}"><i class="dot" style="background:${col2}"></i>${esc(lbl.toUpperCase())}</span>
+        <b class="ft">${esc(f.title)}</b>
+        <span class="det">${I('<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>', 15)}<span>Detected on<br>${esc(fmtDate(r.started_at))}</span></span>
+        ${DATA.server ? `<button type="button" class="btn outline sm" data-ignore="${esc(cardKey(f))}" title="Hide this issue for good (you can restore it in Settings)">${I('<path d="M3 3l18 18M10.6 6.1A10 10 0 0 1 12 6c6 0 10 6 10 6a17 17 0 0 1-3 3.6M6.6 6.6A17 17 0 0 0 2 12s4 6 10 6a9.7 9.7 0 0 0 4.4-1"/>', 14)} Mark ignored</button>` : ""}
+        <span class="chev">${I(P.chev, 16)}</span></summary>
+      <div class="fbody">
         <div data-update-msg="${esc(cardKey(f))}"></div>
-        ${f.detail ? `<p style="margin:0 0 10px;overflow-wrap:anywhere">${esc(f.detail)}</p>` : ""}
-        ${f.recommendation ? `<div class="section-title" style="margin:6px 0 4px">Recommendation</div><p style="margin:0 0 8px">${esc(f.recommendation)}</p>` : ""}
-        ${hiddenCodeHtml(f)}
-        ${f.evidence && Object.keys(f.evidence).length ? `<div class="section-title" style="margin:6px 0 4px">Evidence</div><pre>${esc(JSON.stringify(f.evidence, null, 2))}</pre>` : ""}
-      </div>`;
-  v.innerHTML = `<a class="back" href="#/links/${encodeURIComponent(site.slug)}">${I(P.back, 16)} ${esc(site.name)}</a>
-    <div class="card"><div class="site-head">
-      <span class="ico" style="width:46px;height:46px;border-radius:12px;background:${tint(col)};color:${col};display:grid;place-items:center;flex:none">${I(ico, 24)}</span>
-      <div style="min-width:0"><h2 style="margin:0">${esc(label)}</h2><div class="muted">${esc(desc)}</div>
-        <div class="muted" style="margin-top:2px">${esc(site.url)}</div></div>
-      <div class="actions">${status}</div>
+        <div class="fgrid">
+          <div>${f.detail ? `<div class="fh">${I(P.report, 14)} Description</div><p>${esc(f.detail)}</p>` : ""}
+            ${f.recommendation ? `<div class="reco"><div class="fh" style="color:var(--good)">${I(P.check, 14)} Recommendation</div><p>${esc(f.recommendation)}</p></div>` : ""}
+            ${hiddenCodeHtml(f)}</div>
+          ${evidenceBlock(f)}
+        </div>
+        <div class="fmeta"><span>${I(P.shield, 14)} Category: <b>${esc(label)}</b></span><span>${I(P.info, 14)} Status: <b>Detected</b></span>
+          ${fix ? `<button type="button" class="btn primary sm" style="margin-left:auto" data-update="${esc(cardKey(f))}" title="${esc(fix.label)}">${I(fix.button === "Update" ? P.refresh : P.trash, 14)} ${esc(fix.button)}</button>` : ""}</div>
+      </div></details>`;
+  };
+  const host = new URL(site.url).hostname.replace(/^www\./, "");
+  v.innerHTML = `<nav class="crumbs" aria-label="Breadcrumb"><a href="#/websites">${I(P.back, 12, 2.4)} Back to Websites</a><span>/</span><a href="#/links/${encodeURIComponent(site.slug)}">${esc(host)}</a><span>/</span><b>${esc(label)}</b></nav>
+    <div class="card"><div class="site-head2">
+      <span class="gico">${I(P.globe, 28, 1.6)}</span>
+      <div style="min-width:0"><div class="nm2"><h2>${esc(siteName(site))}</h2><a href="${esc(site.url)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${esc(site.url)}">${I('<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/>', 14)}</a></div>
+        <a href="${esc(site.url)}" target="_blank" rel="noopener noreferrer">${esc(site.url)}</a><div class="muted">${esc(label)}</div></div>
+      <div class="lastsc">${I('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>', 22, 1.6)}<div><div class="muted">Last scanned</div><b>${esc(fmtDate(r.started_at))}</b><div class="muted">${esc(ago(r.started_at))}</div></div></div>
+      <div class="actions" style="flex-direction:column;align-items:flex-end;gap:4px"><span class="chip2" style="color:${risk[1]};background:${risk[2]};font-size:12px;padding:5px 14px">${risk[0]}</span><span class="muted">${esc(desc)}</span></div>
     </div></div>
-    <div class="filters mt" aria-label="Other checks">${CHECKS.map(([kk, ll]) => `<a class="chip" href="#/links/${encodeURIComponent(site.slug)}/${kk}"${kk === k ? ' style="border-color:var(--accent);color:var(--accent);font-weight:600"' : ""}>${esc(ll)}</a>`).join("")}</div>
-    ${shown.length ? `<div class="grid mt" style="gap:12px">${shown.map(findingCard).join("")}</div>`
-      : `<div class="card empty mt"><h3>${ran ? "No issues found" : "Not run in the latest scan"}</h3>${ran ? "This check passed with nothing to report." : "This check was not part of the latest scan."}</div>`}
-    ${DATA.server ? '<div id="defense" class="mt"></div><div id="remediation" class="mt"></div>' : ""}`;
+    <div class="grid cnt5 mt">${COUNT_CARDS.map(([l, ic, c, n]) => `<div class="card cnt"><span class="ico2" style="color:${c};background:color-mix(in srgb, ${c} 13%, var(--surface))">${I(ic, 20)}</span><div><div class="big">${n}</div><div class="muted">${l.replace("Issues", "Issues")}</div></div></div>`).join("")}</div>
+    <nav class="tabs mt" aria-label="Security checks">${CHECKS.map(([kk, ll]) => `<a href="#/links/${encodeURIComponent(site.slug)}/${kk}"${kk === k ? ' aria-current="page"' : ""}>${esc(ll)}</a>`).join("")}</nav>
+    <div class="card mt"><div class="card-h"><span class="ico" style="width:36px;height:36px;border-radius:10px;background:${tint(col)};color:${col};display:grid;place-items:center;flex:none">${I(ico, 20)}</span>
+      <div style="min-width:0"><h2>${esc(label)}</h2><div class="muted">${esc(desc)}</div></div>
+      <div class="right"><label class="search">${I(P.search, 15)}<input id="fq" type="search" placeholder="Search issues…" aria-label="Search issues"></label>
+        <select id="fsev" aria-label="Severity"><option value="">All Severities</option>${["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"].map(s => `<option value="${s}">${s[0] + s.slice(1).toLowerCase()}</option>`).join("")}</select></div></div>
+      ${shown.length ? `<div class="frows" id="frows">${shown.map(findingRow).join("")}</div><div class="empty" id="fnone" style="display:none"><h3>No match</h3>No issue matches the search.</div>`
+        : `<div class="empty"><h3>${ran ? "No issues found" : "Not run in the latest scan"}</h3>${ran ? "This check passed with nothing to report." : "This check was not part of the latest scan."}</div>`}</div>
+    `;
+  // search and severity filter act on the rows already on the page
+  const applyFilter = () => {
+    const q = (v.querySelector("#fq")?.value || "").trim().toLowerCase(), sev = v.querySelector("#fsev")?.value || "";
+    let any = false;
+    v.querySelectorAll(".frow").forEach(row => { const ok = (!sev || row.dataset.sev === sev) && (!q || row.dataset.text.includes(q)); row.style.display = ok ? "" : "none"; any ||= ok; });
+    const none = v.querySelector("#fnone"); if (none) none.style.display = any ? "none" : "";
+  };
+  v.querySelector("#fq")?.addEventListener("input", applyFilter);
+  v.querySelector("#fsev")?.addEventListener("change", applyFilter);
+  v.querySelectorAll("[data-copy]").forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "Copied"; setTimeout(() => b.textContent = "Copy", 1500); } catch {} });
+  // buttons inside a row's summary must not open or close the row
+  v.querySelectorAll("summary button").forEach(b => b.addEventListener("click", e => { e.preventDefault(); }));
   // Remove / Delete: the server makes the change through the site's REST API with the saved application password;
   // on success the card goes away and the rescan it starts confirms it
   const runUpdate = async b => {
@@ -824,233 +1245,6 @@ This deletes the plugin files and can't be undone.`)) return;
     ui.updated.add(`${site.slug}|${b.dataset.ignore}`);  // hide it now; the server leaves it out of the data from here on
     render(); refresh();
   });
-  if (DATA.server) { pageCheck = k; loadDefense(site); loadRemediation(site); }
-}
-
-/* ================= Phase 3: autonomous defense ================= */
-// Integrity monitor between scans, reinfection detection, root-cause investigation and controlled automatic
-// recovery (re-applying fixes a person approved, within limits). Off until switched on per site.
-const defenseCache = {};
-let defenseTimer = null;
-let pageCheck = "compromise";   // the check whose page is open: the cards show its fixes, events and investigations
-const cacheKey = site => `${site.slug}|${pageCheck}`;
-const CONF_COLOR = { high: "var(--bad)", medium: "var(--warn)", low: "var(--text-2)" };
-async function loadDefense(site) {
-  const box = document.getElementById("defense");
-  if (!box) return;
-  if (defenseCache[cacheKey(site)]) drawDefense(box, site, defenseCache[cacheKey(site)]);
-  else box.innerHTML = '<div class="card muted">Loading autonomous defense…</div>';
-  try {
-    const res = await fetch(`/api/defense?site=${encodeURIComponent(site.slug)}&check=${encodeURIComponent(pageCheck)}`, { cache: "no-store" });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
-    const was = defenseCache[cacheKey(site)];
-    defenseCache[cacheKey(site)] = data;
-    const now = document.getElementById("defense");
-    if (now) drawDefense(now, site, data);
-    clearTimeout(defenseTimer);
-    if (data.running) defenseTimer = setTimeout(() => loadDefense(site), 3000);   // a check is running: follow it
-    else if (was && was.running) loadRemediation(site);                            // it may have changed the queue
-  } catch (e) {
-    box.innerHTML = `<div class="card muted">Autonomous defense unavailable: ${esc(e.message)}</div>`;
-  }
-}
-function drawDefense(box, site, d) {
-  const lc = d.last_check || {}, base = d.baseline, inv = (d.investigations || [])[0];
-  const files = d.check === "compromise", sec = (d.security || {}).last_check;
-  const row = (label, value) => `<dt>${esc(label)}</dt><dd>${value}</dd>`;
-  const sevPill = s => s === "INFO" ? '<span class="pill">INFO</span>' : pill(s);
-  const monitor = !d.enabled ? '<span class="status none">Disabled in config.yaml (defense.enabled)</span>'
-    : !d.can_watch ? '<span class="muted">Needs the site\'s WordPress application password (administrator) and an https:// address.</span>'
-    : `${d.running ? `<span class="spin"></span> ${d.running === "investigation" ? "Investigating" : "Checking"} now · ` : ""}`
-      + `Every ${esc(d.interval_minutes)} min${d.monitor_active ? "" : " (runs while the dashboard server is running)"}`
-      + (lc.time ? ` · last check ${esc(ago(lc.time))}` : " · not checked yet")
-      + (lc.error ? ` · <span style="color:var(--bad)">${esc(lc.error)}</span>` : "")
-      + (lc.files != null ? `<div class="muted">${esc(lc.files)} files · ${esc(lc.added)} added, ${esc(lc.modified)} changed, ${esc(lc.removed)} removed since the baseline · ${esc(lc.guards)} applied fix(es) re-checked</div>` : "")
-      + (lc.note ? `<div class="muted">${esc(lc.note)}</div>` : "");
-  const baseline = !base ? '<span class="muted">Recorded on the first check.</span>'
-    : `${esc(base.files)} files, ${esc(fmtDate(base.at))} · ${base.trusted ? `trusted by ${esc(base.by || "")}` : '<b>recorded automatically, not confirmed yet</b>'}`;
-  const auto = `<b style="color:${d.auto_recover ? "var(--good)" : "var(--text-2)"}">${d.auto_recover ? "On" : "Off"}</b>
-      <span class="muted">${d.auto_source === "site" ? "(set for this site)" : "(config.yaml default)"} ·
-      ${esc(d.recoveries_today)} of ${esc(d.limits.max_auto_per_day)} today · at most ${esc(d.limits.max_auto_per_target)} per problem in 7 days · applies to every check of this site</span>`;
-  const blocked = Object.entries(d.blocked || {});
-  const events = (d.events || []).slice(0, 25);
-  const drift = files ? (d.drift || []).filter(x => !x.flagged) : [];
-  const running = d.running ? `<span class="spin"></span> ${d.running === "investigation" ? "Investigating" : "Checking"} now · ` : "";
-  const secMonitor = !d.enabled ? '<span class="status none">Disabled in config.yaml (defense.enabled)</span>'
-    : `${running}This check runs again every ${esc(d.security.interval_minutes)} min${d.monitor_active ? "" : " (while the dashboard server runs)"}`
-      + (sec ? ` · last ${esc(ago(sec.time))} (${esc(sec.source)}) · ${esc(sec.problems)} problem(s) on the site, ${esc(sec.regressions)} came back` : " · not checked yet");
-  box.innerHTML = `<div class="card"><div class="card-h"><h2>Autonomous defense</h2>
-      <div class="right" style="display:flex;gap:8px;flex-wrap:wrap">
-        ${d.enabled && (d.can_watch || !files) ? `<button type="button" class="btn sm" data-def="check" ${d.running ? "disabled" : ""}>Check now</button>` : ""}
-        <button type="button" class="btn sm" data-def="investigate" ${d.running ? "disabled" : ""}>Investigate</button></div></div>
-      <div class="muted">${files ? `Watches the site's files and every applied fix between scans. A problem that comes back after a fix is a
-        <b>reinfection</b>: it is investigated and, when automatic recovery is on, the fix a person approved is applied again
-        (backed up, verified, undoable). New infections always wait for approval.`
-        : `Runs this check again between scans. A problem that comes back after it was fixed (by the agent or by hand) is
-        investigated and, when automatic recovery is on and a person approved the fix, the fix is applied again (backed up,
-        verified, undoable). New problems always wait for approval.`}</div>
-      <div data-def-msg style="margin-top:6px"></div>
-      <dl class="kv mt" style="display:grid;grid-template-columns:max-content 1fr;gap:8px 16px;margin:12px 0 0">
-        ${files ? row("Integrity monitor", monitor) : row("Security monitor", secMonitor)}
-        ${files ? row("Baseline", baseline + (d.can_watch ? ` <button type="button" class="btn sm" data-def="trust" style="margin-left:8px">Trust current files</button>` : "")) : ""}
-        ${row("Urgent alerts", d.alerts ? '<span style="color:var(--good)">Teams connected</span> <span class="muted">· new HIGH/CRITICAL problems, problems that come back and automatic fixes are sent right away</span>'
-          : '<b style="color:var(--warn)">Not connected</b> <span class="muted">· nothing is sent until a Teams webhook is set in Settings &gt; Teams alerts</span>')}
-        ${row("Automatic recovery", auto + (d.can_watch || !files ? ` <button type="button" class="btn sm ${d.auto_recover ? "" : "outline"}" data-def="auto" style="margin-left:8px">${d.auto_recover ? "Turn off" : "Turn on"}</button>` : ""))}
-      </dl>
-      ${blocked.length ? `<div class="mt"><div class="section-title" style="margin:0 0 6px">Automatic recovery stopped for</div>
-        ${blocked.map(([subj, b]) => `<div style="display:flex;gap:10px;align-items:baseline;margin-bottom:4px"><b style="overflow-wrap:anywhere">${esc(subj.split(":").slice(1).join(":"))}</b>
-          <span class="muted">${esc(b.reason)}</span><button type="button" class="btn sm" style="margin-left:auto" data-unblock="${esc(subj)}">Allow again</button></div>`).join("")}</div>` : ""}
-      ${inv ? `<div class="mt"><div class="section-title" style="margin:0 0 6px">Root-cause investigation · ${esc(fmtDate(inv.time))} · ${esc(inv.reason)}
-          ${inv.links && inv.links.md ? ` · <a href="${esc(inv.links.md)}" target="_blank" rel="noopener">full report</a>` : ""}</div>
-        <p style="margin:0 0 8px"><b>${esc(inv.summary)}</b></p>
-        <div class="grid" style="gap:8px">${(inv.causes || []).map(c => `<div class="card" style="padding:10px 12px">
-          <div style="display:flex;gap:8px;align-items:baseline"><span class="pill"><span class="dot" style="background:${CONF_COLOR[c.confidence] || "var(--na)"}"></span>${esc(c.confidence)}</span><b>${esc(c.title)}</b></div>
-          <p style="margin:6px 0 4px">${esc(c.detail)}</p>
-          ${(c.actions || []).length ? `<ul style="margin:0;padding-left:18px">${c.actions.map(a => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}</div>`).join("")}</div></div>` : ""}
-      ${events.length ? `<details class="mt" ${events.some(e => ["reinfection", "infection", "escalated", "recovery_failed"].includes(e.type) && Date.now() - new Date(e.time) < 864e5) ? "open" : ""}>
-        <summary class="section-title" style="cursor:pointer;margin:0">Events (${(d.events || []).length})</summary>
-        <table class="tbl"><tbody>${events.map(e => `<tr><td style="overflow-wrap:anywhere"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${sevPill(e.severity)}
-          <span class="muted">${esc(fmtDate(e.time))}</span></div><b>${esc(e.title)}</b>${e.detail ? `<div class="muted">${esc(e.detail)}</div>` : ""}</td></tr>`).join("")}</tbody></table></details>` : ""}
-      ${drift.length ? `<details class="mt"><summary class="section-title" style="cursor:pointer;margin:0">Unexplained changes since the baseline (${drift.length})</summary>
-        <div class="muted" style="margin:6px 0">Not part of an official WordPress or plugin release and no malware signature matched. If your team made them, use Trust current files.</div>
-        <table class="tbl"><tbody>${drift.slice(0, 100).map(x => `<tr><td style="overflow-wrap:anywhere">${esc(x.path)}
-          <div class="muted">${esc(x.change)} · first seen ${esc(fmtDate(x.seen))}</div></td></tr>`).join("")}</tbody></table></details>` : ""}
-    </div>`;
-  const msg = box.querySelector("[data-def-msg]");
-  const say = (text, bad) => { msg.style.color = bad ? "var(--bad)" : "var(--text-2)"; msg.textContent = text; };
-  const run = async (b, path, body, confirmText) => {
-    if (confirmText && !confirm(confirmText)) return;
-    box.querySelectorAll("button").forEach(x => x.disabled = true);
-    const label = b.innerHTML;
-    b.innerHTML = '<span class="spin"></span> Working…';
-    const res = await api(path, { site: site.slug, ...body });
-    if (!res.ok) say(res.data.message || (res.status === 404 ? "The dashboard server is out of date: restart it." : `Could not do it (HTTP ${res.status})`), true);
-    else if (res.data.files != null) say(`${res.data.files} files recorded as the trusted baseline.`);
-    b.innerHTML = label;
-    await loadDefense(site);
-  };
-  box.querySelectorAll("[data-def]").forEach(b => b.onclick = () => {
-    const what = b.dataset.def;
-    if (what === "check") return run(b, "/api/defense/check", { check: pageCheck });
-    if (what === "investigate") return run(b, "/api/defense/investigate", { check: pageCheck });
-    if (what === "trust") return run(b, "/api/defense/trust", {}, `Record the files on ${site.url} as they are now as the trusted baseline?\n\nOnly do this when you know the site is clean: changes up to now stop being reported.`);
-    if (what === "auto") return run(b, "/api/defense/auto", { enabled: !d.auto_recover }, d.auto_recover ? null
-      : `Turn on automatic recovery for ${site.url}?\n\nWhen a problem comes back after a fix a person approved (on any check of this site), the agent applies that fix again on its own (backed up, verified, undoable), at most ${d.limits.max_auto_per_target} times per problem in 7 days and ${d.limits.max_auto_per_day} per day. New problems still wait for approval.`);
-  });
-  box.querySelectorAll("[data-unblock]").forEach(b => b.onclick = () => run(b, "/api/defense/unblock", { subject: b.dataset.unblock }));
-}
-
-/* ================= Phase 2: remediation approval queue ================= */
-// Proposed fixes for the open check's problems. Nothing changes on the site until someone approves a fix; each
-// approved fix is backed up, applied, verified, and can be undone. Problems the agent can't fix get the steps to fix
-// them by hand; once marked done they are watched for coming back.
-const FIX_LABEL = { trash: "Move to trash", strip_spam: "Remove injected blocks", restore_revision: "Restore clean revision",
-  demote_user: "Demote account", quarantine: "Quarantine file", restore_core: "Restore official core file",  restore_plugin_file: "Restore official plugin file", clean_config: "Remove malicious lines", manual: "Fix by hand",
-  harden: "Turn on protection", block_paths: "Block access", update_plugin: "Update plugin", update_theme: "Update theme",
-  update_core: "Update WordPress", deactivate_plugin: "Deactivate plugin", quarantine_dir: "Quarantine folder",
-  revoke_app_passwords: "Revoke passwords", accept_change: "Accept change" };
-const NO_UNDO = ["update_plugin", "update_theme", "update_core", "revoke_app_passwords"];
-const REQUIRES = { site_guard: "Needs the Kleza Site Guard plugin", "site_guard_1.2": "Needs Kleza Site Guard 1.2",
-  wordpress: "Needs the WordPress application password" };
-const remediationCache = {};
-async function loadRemediation(site) {
-  const box = document.getElementById("remediation");
-  if (!box) return;
-  if (remediationCache[cacheKey(site)]) drawRemediation(box, site, remediationCache[cacheKey(site)]);
-  else box.innerHTML = '<div class="card muted">Loading proposed fixes…</div>';
-  try {
-    const res = await fetch(`/api/remediation?site=${encodeURIComponent(site.slug)}&check=${encodeURIComponent(pageCheck)}`, { cache: "no-store" });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
-    remediationCache[cacheKey(site)] = data;
-    const now = document.getElementById("remediation");
-    if (now) drawRemediation(now, site, data);
-  } catch (e) {
-    box.innerHTML = `<div class="card muted">Proposed fixes unavailable: ${esc(e.message)}</div>`;
-  }
-}
-function drawRemediation(box, site, data) {
-  const ps = data.proposals || [];
-  const open = ps.filter(p => p.status === "pending" || p.status === "failed");
-  const done = ps.filter(p => p.status === "applied" || p.status === "done" || p.status === "undone");
-  const canApprove = p => p.action !== "manual" && (!p.needs_wp || data.can_fix);
-  const closed = ps.filter(p => p.status === "rejected" || p.status === "resolved");
-  const lowRisk = open.filter(p => p.status === "pending" && p.risk === "low" && canApprove(p));
-  const when = t => t ? fmtDate(t) : "";
-  const status = p => {
-    if (p.status === "applied") return `<div style="margin:4px 0;color:${p.verified ? "var(--good)" : "var(--warn)"}">${p.verified ? "✓ Fixed and verified" : "⚠ Applied, not verified"}: ${esc(p.verification || "")}
-      <span class="muted">· approved by ${esc(p.decided_by || "")} ${esc(when(p.applied_at))}${p.reappeared ? " · <b>the problem came back after this fix</b>" : ""}</span></div>`;
-    if (p.status === "failed") return `<div style="margin:4px 0;color:var(--bad)">Failed: ${esc(p.error || "")}</div>`;
-    if (p.status === "done") return `<div style="margin:4px 0;color:var(--good)">✓ Fixed by hand <span class="muted">· marked done by ${esc(p.decided_by || "")} ${esc(when(p.decided_at))} · watched in case it comes back</span></div>`;
-    if (p.status === "undone") return `<div class="muted" style="margin:4px 0">Undone by ${esc(p.undone_by || "")} ${esc(when(p.undone))}</div>`;
-    if (p.status === "rejected") return `<div class="muted" style="margin:4px 0">Rejected by ${esc(p.decided_by || "")} ${esc(when(p.decided_at))}</div>`;
-    if (p.status === "resolved") return `<div class="muted" style="margin:4px 0">No longer detected by the latest scan.</div>`;
-    return "";
-  };
-  const buttons = p => {
-    if ((p.status === "pending" || p.status === "failed") && p.action === "manual")
-      return `<button type="button" class="btn sm primary" data-fix="done" data-id="${esc(p.id)}" title="I fixed it: watch for it coming back">Done</button>`
-        + `<button type="button" class="btn sm" data-fix="reject" data-id="${esc(p.id)}" title="Not a problem for this site">Reject</button>`;
-    if (p.status === "pending" || p.status === "failed")
-      return (canApprove(p) ? `<button type="button" class="btn sm primary" data-fix="approve" data-id="${esc(p.id)}">${p.status === "failed" ? "Retry" : "Approve"}</button>` : "")
-        + `<button type="button" class="btn sm" data-fix="reject" data-id="${esc(p.id)}">Reject</button>`;
-    if (p.status === "applied" && !NO_UNDO.includes(p.action)) return `<button type="button" class="btn sm" data-fix="undo" data-id="${esc(p.id)}">Undo</button>`;
-    return "";
-  };
-  const card = p => `<div class="card" style="padding:12px 14px">
-      <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
-        <span class="pill">${esc(FIX_LABEL[p.action] || p.action)}</span>
-        <b style="overflow-wrap:anywhere">${esc(p.target)}</b>
-        <span class="muted">${esc(p.source || "")}${p.risk && p.risk !== "none" ? ` · ${esc(p.risk)} risk` : ""}</span>
-        <span style="margin-left:auto;display:flex;gap:6px">${buttons(p)}</span></div>
-      <p style="margin:6px 0 2px">${esc(p.why)}</p>${status(p)}
-      ${p.requires && (p.status === "pending" || p.status === "failed") && REQUIRES[p.requires] ? `<div class="muted" style="margin:4px 0">${esc(REQUIRES[p.requires])}${p.needs_wp && !data.can_fix ? " (not set up for this site)" : ""}.</div>` : ""}
-      ${p.reinfection ? `<div style="margin:4px 0;color:var(--bad)">↻ ${pageCheck === "compromise" ? "Reinfection" : "Came back"}${p.reinfection.count > 1 ? ` (${esc(p.reinfection.count)} times)` : ""}:
-        ${p.reinfection.how === "went away" ? `gone since ${esc(when(p.reinfection.fixed_at))} without a fix` : `${p.reinfection.how === "fixed by hand" ? "fixed by hand" : "fixed"} ${esc(when(p.reinfection.fixed_at))} by ${esc(p.reinfection.fixed_by || "")}`}, back ${esc(when(p.reinfection.detected))}
-        ${p.reinfection.approved_by ? `<span class="muted">· first approved by ${esc(p.reinfection.approved_by)}</span>` : ""}</div>` : ""}
-      ${p.auto_note && (p.status === "pending" || p.status === "failed") ? `<div class="muted" style="margin:4px 0">Automatic recovery: ${esc(p.auto_note)}</div>` : ""}
-      ${p.preview ? `<details style="margin-top:6px"><summary class="muted" style="cursor:pointer">Preview</summary><pre style="margin-top:6px">${esc(p.preview)}</pre></details>` : ""}
-    </div>`;
-  const section = (title, list, openByDefault) => list.length ? `<details ${openByDefault ? "open" : ""} class="mt">
-      <summary class="section-title" style="cursor:pointer;margin:0 0 8px">${esc(title)} (${list.length})</summary>
-      <div class="grid" style="gap:10px">${list.map(card).join("")}</div></details>` : "";
-  box.innerHTML = `<div class="card"><div class="card-h"><h2>Remediation</h2>
-      <div class="right" style="display:flex;gap:8px;align-items:center">
-        ${data.can_fix && lowRisk.length ? `<button type="button" class="btn sm outline" data-fix-all="1">Approve all low-risk (${lowRisk.length})</button>` : ""}
-        <span class="muted">${open.length} waiting · ${done.filter(p => p.status === "applied" || p.status === "done").length} fixed</span></div></div>
-      <div class="muted">Nothing changes on the site until a fix is approved. Each fix is backed up first, checked again after it is applied, and can be undone.
-        Problems the agent can't fix come with the steps to fix them by hand: mark them Done afterwards and they are watched.
-        ${data.can_fix || ps.every(p => !p.needs_wp) ? "" : "<b>Most automatic fixes need the site's WordPress application password (administrator) and an https:// address.</b>"}</div>
-      <div data-fix-msg style="margin-top:6px"></div>
-      ${ps.length ? "" : '<div class="muted mt">Nothing to fix. Fixes appear here after a scan finds a problem.</div>'}
-      ${section("Waiting for a decision", open, true)}${section("Fixed", done, open.length === 0)}${section("Rejected or no longer detected", closed, false)}
-      ${(data.history || []).length ? `<details class="mt"><summary class="section-title" style="cursor:pointer;margin:0">History</summary>
-        <table class="tbl"><tbody>${data.history.map(h => `<tr><td class="muted" style="white-space:nowrap">${esc(fmtDate(h.time))}</td>
-          <td><b>${esc(h.event)}</b> ${esc(h.id)}${h.by ? ` · ${esc(h.by)}` : ""}</td><td class="muted">${esc(h.message)}</td></tr>`).join("")}</tbody></table></details>` : ""}
-    </div>`;
-  const msg = box.querySelector("[data-fix-msg]");
-  const act = async (ids, decision, b) => {
-    const p = ps.find(x => x.id === ids[0]);
-    if (decision === "approve" && !confirm(ids.length > 1
-        ? `Apply ${ids.length} low-risk fixes to ${site.url}?\n\nEach one is backed up first and can be undone.`
-        : `${FIX_LABEL[p.action] || p.action}: ${p.target}\n\n${p.why}\n\nApply this fix to ${site.url}? It is backed up first${NO_UNDO.includes(p.action) ? "; this kind of fix can't be undone from the dashboard" : " and can be undone"}.`)) return;
-    if (decision === "undo" && !confirm(`Undo this fix and put the original back?\n\n${p.target}`)) return;
-    box.querySelectorAll("button").forEach(x => x.disabled = true);
-    if (b) b.innerHTML = '<span class="spin"></span> Working…';
-    const res = decision === "undo" ? await api("/api/remediation/undo", { site: site.slug, id: ids[0] })
-      : await api("/api/remediation/decide", { site: site.slug, ids, decision });
-    const errors = res.ok ? (res.data.results || []).filter(r => r.status === "error" || r.status === "failed") : [];
-    if (!res.ok || errors.length) {
-      msg.style.color = "var(--bad)";
-      msg.textContent = res.ok ? errors.map(r => r.error).join(" · ") : (res.data.message || `Could not do it (HTTP ${res.status})`);
-    }
-    await loadRemediation(site);
-    if (decision === "approve") { refresh(); pollWhileRunning(); }
-  };
-  box.querySelectorAll("[data-fix]").forEach(b => b.onclick = () => act([b.dataset.id], b.dataset.fix, b));
-  const all = box.querySelector("[data-fix-all]");
-  if (all) all.onclick = () => act(lowRisk.map(p => p.id), "approve", all);
 }
 
 // A card that was just ignored is hidden right away, before the refreshed data arrives
@@ -1176,8 +1370,6 @@ function pageSettings(v) {
   const st = DATA.settings || {}, theme = store.get("theme") === "dark" ? "dark" : "light";
   const admin = st.admin || {};
   const initials = (admin.name || admin.email || "A").trim().split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
-  const times = DATA.sites.map(s => s.latest?.started_at).filter(Boolean).sort(), last = times[times.length - 1];
-  const [schedLine, nextLine] = scheduleText(last);
   v.innerHTML = `${back}
     <div class="card"><div class="card-h"><span style="color:var(--accent)">${I(P.users, 20)}</span><h2>Admin details</h2>
       <div class="right">${DATA.server && admin.enabled ? `<button class="btn sm" id="signOut">${I(P.back, 14)} Sign out</button>` : ""}</div></div>
@@ -1194,20 +1386,14 @@ function pageSettings(v) {
         <dt>Password</dt><dd><span class="muted">Set with <code>auth.password</code> in config.yaml. Change it from the default.</span></dd>
       </dl>
     </div>
-    <div class="grid row2 mt">
-      <div class="card"><div class="card-h"><span style="color:var(--accent)">${I('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>', 20)}</span><h2>Scans</h2>
-        <div class="right"><button class="btn sm" id="reloadBtn" type="button">${I(P.refresh, 14)} Refresh data</button></div></div>
-        <dl class="kv">
-          <dt>Last scan</dt><dd>${last ? esc(fmtDate(last)) : "Not yet"}</dd>
-          <dt>Next scan</dt><dd>${esc((nextLine || "").replace(/^Next: /, "") || "—")} <div class="muted">${esc(schedLine)}</div></dd>
-        </dl></div>
-      ${alertsCard()}
-    </div>
+    <div class="mt">${alertsCard()}</div>
     <div class="grid row2 mt">
       <div class="card"><div class="card-h"><h2>Monitoring</h2></div><dl class="kv">
         <dt>Schedule</dt><dd>${st.schedule_mode === "daily" ? `Every site, daily at ${esc(fmtClock(st.daily_at))}${st.next_scan ? ` (next: ${esc(fmtShortDT(st.next_scan))})` : ""}
           <div class="muted">Runs while the dashboard server (<code>--serve</code>) is on. Change the time with <code>schedule.daily_at</code> in config.yaml.</div>`
-          : `Every ${esc(st.interval_minutes)} minutes <div class="muted">Active when started with <code>--loop</code></div>`}</dd>
+          : st.schedule_mode === "watch" ? `Full scan when a site is added or you click Scan, then watched every minute
+          <div class="muted">Anything suspicious found by the watch goes to Teams at once.</div>`
+          : `Every ${esc(st.interval_minutes)} minutes`}</dd>
         <dt>Mode</dt><dd>${DATA.server ? "Live dashboard (scans can be started here)" : "Static report file — start <code>python -m security_agent --serve</code> for live mode"}</dd>
         <dt>Fail threshold</dt><dd>${pill(st.fail_on || "HIGH")} <span class="muted">exit code 2 for cron/CI</span></dd>
         <dt>Reports folder</dt><dd><code>${esc(st.output_dir)}</code></dd>
@@ -1223,7 +1409,6 @@ function pageSettings(v) {
     <div class="card mt"><div class="card-h"><h2>Appearance</h2></div>
       <div class="seg" role="group" aria-label="Theme">${["light", "dark"].map(t => `<button type="button" data-theme-opt="${t}" aria-pressed="${theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
     </div>`;
-  v.querySelector("#reloadBtn").onclick = () => DATA.server ? refresh() : location.reload();
   bindAlerts(v);
   bindIgnored(v);
   v.querySelectorAll("[data-theme-opt]").forEach(b => b.onclick = () => { const t = b.dataset.themeOpt; store.set("theme", t); applyTheme(t); render(); });
@@ -1284,16 +1469,13 @@ function scheduleText(lastIso) {
     const label = `Daily scan at ${fmtClock(st.daily_at)}`;
     return st.schedule_active && st.next_scan ? [label, `Next: ${fmtShortDT(st.next_scan)}`] : [label, "Runs while the dashboard server is on"];
   }
+  if (st.schedule_mode === "watch") return st.schedule_active ? ["Watched every minute", "Full scan when added or on Scan"] : ["Automatic scans off", ""];
   const next = st.schedule_active && lastIso ? new Date(+new Date(lastIso) + st.interval_minutes * 60e3) : null;
   return st.schedule_active ? [`Every ${st.interval_minutes} min`, `Next: ${next ? fmtShortDT(next.toISOString()) : "soon"}`] : ["Automatic scans off", ""];
 }
 function render() {
-  const { page, arg, sub } = route();
-  const sb = document.getElementById("settingsBtn");
-  sb.innerHTML = I(P.gear, 16);
-  page === "settings" ? sb.setAttribute("aria-current", "page") : sb.removeAttribute("aria-current");
-  const hb = document.getElementById("historyBtn");
-  page === "history" ? hb.setAttribute("aria-current", "page") : hb.removeAttribute("aria-current");
+  const r = route(), { page, arg, sub } = r;
+  renderShell(r);
   hideTip();
   const v = document.getElementById("view");
   if (page === "links" && arg) {
@@ -1301,9 +1483,32 @@ function render() {
     if (!site) v.innerHTML = '<div class="card empty"><h3>Link not found</h3><a href="#/links">Back to all links</a></div>';
     else if (sub) pageCheckDetail(v, site, sub);
     else pageSite(v, site);
-  } else ({ links: pageLinks, settings: pageSettings, history: pageHistory }[page] || pageLinks)(v);
+  } else if (page === "check") pageAllFindings(v, arg);
+  else ({ links: pageLinks, websites: pageWebsites, settings: pageSettings, history: pageHistory, reports: pageHistory }[page] || pageLinks)(v);
   renderBanner();
 }
+
+/* sidebar, top bar and system status: drawn on every render so the active page and counts stay current */
+function renderShell(r) {
+  document.getElementById("logo").innerHTML = I(P.shieldCheck, 22);
+  document.getElementById("nav").innerHTML = NAV.map(([h, label, ico, on]) =>
+    `<a href="${h}"${on(r) ? ' aria-current="page"' : ""}>${I(P[ico], 18)}<span>${esc(label)}</span></a>`).join("");
+  document.getElementById("menuBtn").innerHTML = I(P.menu, 18);
+  document.getElementById("gsIcon").innerHTML = I(P.search, 16);
+  const highs = alertItems().filter(x => RANK[x.f.severity] >= 3).length;
+  document.getElementById("bellBtn").innerHTML = I(P.bell, 18) + (highs ? '<span class="badge"></span>' : "");
+  document.getElementById("bellBtn").title = highs ? `${highs} high-risk issue${highs === 1 ? "" : "s"}` : "No high-risk issues";
+  const admin = (DATA.settings || {}).admin || {}, nm = admin.name || "Administrator";
+  const initials = nm.trim().split(/\s+/).map(w => w[0]).slice(0, 1).join("").toUpperCase() || "A";
+  document.getElementById("userChip").innerHTML = `<span class="avatar">${esc(initials)}</span><span class="nm">${esc(nm)}</span>${I(P.chevDown, 14)}`;
+}
+document.getElementById("menuBtn").onclick = () => {
+  const app = document.getElementById("app");
+  if (matchMedia("(max-width: 900px)").matches) app.classList.toggle("side-open"); else app.classList.toggle("collapsed");
+};
+document.getElementById("nav").addEventListener("click", () => document.getElementById("app").classList.remove("side-open"));
+document.getElementById("gsearch").addEventListener("keydown", e => { if (e.key !== "Enter") return;
+  ui.linkQ = e.target.value; ui.linkState = null; if (location.hash === "#/websites") render(); else location.hash = "#/websites"; });
 
 /* ================= live mode: API, scans, add link ================= */
 async function api(path, body) {
@@ -1330,7 +1535,7 @@ function pollWhileRunning() {
     try { const st = await (await fetch("/api/status", { cache: "no-store" })).json();
       if (!st.running) { clearInterval(polling); await refresh(); return; }
       // pull in results as each site finishes
-      if (st.done !== DATA.scan_status?.done) await refresh(); } catch {}
+      if (st.done !== DATA.scan_status?.done || JSON.stringify(st.ssh) !== JSON.stringify(DATA.scan_status?.ssh)) await refresh(); } catch {}
   }, 3000);
 }
 async function startScan(slug) {
@@ -1338,12 +1543,21 @@ async function startScan(slug) {
   const res = await api("/api/scan", { site: slug || null });
   if (res.status === 202 || res.status === 409) { await refresh(); pollWhileRunning(); }
 }
+document.addEventListener("click", async e => {
+  if (!e.target.closest("#stopScan")) return;
+  e.target.closest("#stopScan").disabled = true;
+  await api("/api/scan/stop", {}); await refresh(); pollWhileRunning();
+});
 function renderBanner() {
   const st = DATA.scan_status || {}, b = document.getElementById("banner");
   if (!DATA.server) { b.innerHTML = ""; return; }
   const name = st.site ? (DATA.sites.find(s => s.slug === st.site)?.url || st.site) : "all links";
   const prog = st.total > 1 ? ` — ${st.done || 0} of ${st.total} done` : "";
-  b.innerHTML = st.running ? `<div class="banner"><span class="spin" style="color:var(--accent)"></span>Scanning ${esc(name)}${prog}, started ${esc(ago(st.started_at))}. Results appear as each site finishes.</div>`
+  const sp = st.ssh, step = !sp ? "" : sp.phase === "reading"
+    ? ` Reading server files: ${(sp.done || 0).toLocaleString()} of ${(sp.total || 0).toLocaleString()} (${sp.total ? Math.round(100 * (sp.done || 0) / sp.total) : 0}%).`
+    : ` Listing server files: ${(sp.found || 0).toLocaleString()} found so far.`;
+  const onDashboard = route().page === "links" && !route().arg;   // the dashboard shows its own progress card
+  b.innerHTML = st.running && onDashboard ? "" : st.running ? `<div class="banner"><span class="spin" style="color:var(--accent)"></span>Scanning ${esc(name)}${prog}, started ${esc(ago(st.started_at))}.${esc(step)} ${st.stopping ? " Stopping…" : ` <button type="button" class="btn sm" id="stopScan">Stop scan</button>`} Results appear as each site finishes.</div>`
     : st.error ? `<div class="banner err">Last scan failed: ${esc(st.error)}</div>` : "";
 }
 
@@ -1405,24 +1619,78 @@ async function openCreds(slug) {
   const locked = login.kind === "ssh" && !login.editable;   // SSH login set in config.yaml
   $id("credTitle").textContent = `SSH access: ${siteName(site)}`;
   $id("cSshUser").value = login.kind === "ssh" ? login.username || "" : ""; $id("cSshKey").value = "";
-  $id("credSsh").classList.toggle("hidden", locked);
-  $id("credLocked").classList.toggle("hidden", !locked);
-  $id("credSave").classList.toggle("hidden", locked);
+  credMode(login.kind === "ssh" && !locked ? "connected" : locked ? "locked" : "form");
   $id("credErr").textContent = "";
+  $id("cName").value = siteName(site); $id("cUrl").value = site.url || "";
+  credKeyId = ""; $id("cPubWrap").classList.add("hidden");
+  for (const f of ["cSshCmd", "cSshHost", "cSshPort"]) $id(f).value = "";
+  showParsed();
+  for (const f of ["cvServer", "cvRoot", "cvFiles", "cvLast"]) $id(f).textContent = "…";
   credDlg.showModal();
-  // The saved login is fetched when the form opens (it is never part of the page data) and filled in to edit.
+  // The saved login is fetched when the dialog opens (it is never part of the page data) and shown or filled in.
   if (login.kind !== "ssh") return;
   const res = await api("/api/sites/credentials/get", { slug });
   if (!res.ok || slug !== credSlug || res.data.kind !== "ssh") return;
+  const d = res.data;
+  $id("cvServer").textContent = `${d.username}@${d.host}${d.port ? ":" + d.port : ""}`;
+  $id("cvRoot").textContent = d.web_root || "—";
+  $id("cvFiles").textContent = d.files == null ? "Not checked yet" : d.files.toLocaleString();
+  $id("cvLast").textContent = d.checked_at ? `${fmtDate(d.checked_at)} (${ago(d.checked_at)})` : "Not yet";
   $id("cSshUser").value = res.data.username || ""; $id("cSshKey").value = res.data.private_key || "";
+  $id("cSshHost").value = res.data.host || ""; $id("cSshPort").value = res.data.port || "";
+  showParsed();
 }
+// Accepts a pasted "ssh -p 65002 user@host" line (or "user@host") in any of the login fields and splits it up.
+function splitSshCommand() {
+  for (const f of ["cSshCmd", "cSshUser", "cSshHost", "cSshPort"]) {
+    const m = $id(f).value.trim().match(/^(?:ssh\s+)?(?:(?:-p\s*(\d+)\s+)?([\w.-]+)@([\w.:-]+)(?:\s+-p\s*(\d+))?)$/i);
+    if (!m) continue;
+    $id("cSshUser").value = m[2]; $id("cSshHost").value = m[3];
+    if (m[1] || m[4]) $id("cSshPort").value = m[1] || m[4];
+    return;
+  }
+}
+function showParsed() {
+  const u = $id("cSshUser").value, h = $id("cSshHost").value, p = $id("cSshPort").value;
+  $id("cSshParsed").textContent = u ? `Connecting as ${u}${h ? " @ " + h : ""}${p ? " port " + p : ""}` : "";
+}
+for (const f of ["cSshCmd", "cSshUser", "cSshHost", "cSshPort"]) $id(f).addEventListener("input", () => { splitSshCommand(); showParsed(); });
+let credKeyId = "";
+$id("cGenKey").onclick = async () => {
+  const res = await api("/api/ssh/keygen", {});
+  if (!res.ok) { $id("credErr").textContent = res.data.message || "Could not generate a key"; return; }
+  credKeyId = res.data.key_id; $id("cSshKey").value = "";
+  $id("cPubKey").value = res.data.public_key; $id("cPubWrap").classList.remove("hidden");
+};
+// "connected": the status of a site that already has SSH; "form": the login form; "locked": set in config.yaml
+function credMode(mode) {
+  $id("credConnected").classList.toggle("hidden", mode !== "connected");
+  $id("credSsh").classList.toggle("hidden", mode !== "form");
+  $id("credIntro").classList.toggle("hidden", mode === "connected");
+  $id("credLocked").classList.toggle("hidden", mode !== "locked");
+  $id("credSave").classList.toggle("hidden", mode !== "form");
+  document.querySelector("#credForm .check-row").classList.toggle("hidden", mode !== "form");
+  $id("credCancel").textContent = mode === "form" ? "Cancel" : "Close";
+}
+$id("cChange").onclick = () => credMode("form");
+$id("cDisconnect").onclick = async () => {
+  if (!confirm("Disconnect SSH for this site? The saved key is deleted and the file watch stops. The outside checks continue.")) return;
+  const res = await api("/api/sites/ssh/disconnect", { slug: credSlug });
+  if (!res.ok) { $id("credErr").textContent = res.data.message || "Could not disconnect"; return; }
+  credDlg.close(); await refresh();
+};
 $id("credCancel").onclick = () => credDlg.close();
 $id("credForm").addEventListener("submit", async e => {
   e.preventDefault();
   const btn = $id("credSave"), err = $id("credErr"), label = btn.textContent;
   btn.disabled = true; err.textContent = "";
-  const body = { slug: credSlug, scan: $id("cScan").checked };
-  body.ssh = { username: $id("cSshUser").value, private_key: $id("cSshKey").value };
+  const body = { slug: credSlug, scan: $id("cScan").checked, name: $id("cName").value, url: $id("cUrl").value };
+  splitSshCommand();
+  const pasted = $id("cSshKey").value.trim();
+  body.ssh = { username: $id("cSshUser").value, host: $id("cSshHost").value, port: $id("cSshPort").value,
+               private_key: pasted, key_id: pasted ? "" : credKeyId };
+  // The website folder is found automatically; it is searched for again only when the site link changes.
+  if ($id("cUrl").value.trim() !== (DATA.sites.find(s => s.slug === credSlug)?.url || "")) body.ssh.web_root = "";
   btn.textContent = "Connecting…";
   const res = await api("/api/sites/credentials", body);
   btn.disabled = false; btn.textContent = label;

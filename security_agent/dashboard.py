@@ -17,13 +17,15 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 import requests
 
-from .checks import ssh_inside
+from .checks import live_watch, ssh_inside
 from .checks.wordpress import _read_secret_file, credentials as wp_credentials
 from .ignored import apply_ignored, ignore_key, load_ignored, save_ignored
 from .config import _slug, load_managed_sites, resolve_targets, save_managed_sites
 from .excel import to_xlsx
 from .fixes import TARGETS
-from .notify import save_webhook, send_daily_card, send_defense_alert, webhook_status
+from .notify import save_webhook, send_daily_card, send_defense_alert, send_urgent_alert, webhook_status
+from .models import Severity as Sev
+from .report import RISK_WEIGHTS, STATUS
 from .schedule import next_daily_run, schedule_tz
 
 log = logging.getLogger("security_agent.dashboard")
@@ -94,6 +96,31 @@ def _login_info(target):
             "editable": True}
 
 
+def _with_live(latest, live):
+    """Add what the one-minute watch found since the last full scan to that scan's report, so it shows in the results:
+    the findings are added, and the counts, status and risk score are worked out again."""
+    if not latest or not live:
+        return latest
+    have = {f.get("title") for f in latest.get("findings", [])}
+    added = [{"check": i.get("check", "malware"), "title": i["title"], "severity": i["severity"],
+              "detail": i.get("detail", ""), "recommendation": i.get("recommendation", ""),
+              "evidence": {"found_by": "one-minute watch", "seen": i.get("seen", "")}}
+             for i in live if i.get("title") and i["title"] not in have]
+    if not added:
+        return latest
+    findings = sorted(latest["findings"] + added, key=lambda f: (-Sev[f["severity"]], f["check"], f["title"]))
+    worst = max((Sev[f["severity"]] for f in findings), default=Sev.INFO)
+    counts = {s.name: sum(f["severity"] == s.name for f in findings) for s in sorted(Sev, reverse=True)}
+    return {**latest, "findings": findings, "worst_severity": worst.name, "security_status": STATUS[worst],
+            "risk_score": max(0, 100 - sum(RISK_WEIGHTS[Sev[f["severity"]]] for f in findings)),
+            "severity_counts": counts}
+
+
+def _live_items(config, slug):
+    saved = _read_json(Path(config["report"]["state_dir"]) / f"{slug}.filewatch.json") or {}
+    return list(saved.get("live") or []) + list(saved.get("live_checks") or [])
+
+
 def collect_data(config, targets, server=False, scan_status=None):
     out = Path(config["report"]["output_dir"])
     ignored = load_ignored(config)
@@ -108,7 +135,8 @@ def collect_data(config, targets, server=False, scan_status=None):
             "pages": t.get("pages", ["/"]),
             "managed": t.get("managed", False),
             "login": _login_info(t) if server else None,
-            "latest": apply_ignored(_read_json(site_dir / "latest.json"), ignored.get(t["slug"], {})),
+            "latest": apply_ignored(_with_live(_read_json(site_dir / "latest.json"), _live_items(config, t["slug"])),
+                                    ignored.get(t["slug"], {})),
             "history": _with_runs(_read_history(site_dir / "history.jsonl"), site_dir),
         })
     return {
@@ -163,6 +191,9 @@ def _normalize_site_url(raw):
 
 class FixError(Exception):
     """WordPress refused or couldn't make a change."""
+
+
+WATCH_CHECKS = ["exposed_files", "vulnerabilities"]   # outside checks the one-minute watch runs in full
 
 
 class DashboardServer:
@@ -311,6 +342,82 @@ class DashboardServer:
         save_managed_sites(self.config, sites)
         self._reload_targets()
 
+    def rename_site(self, slug, name):
+        """Change a dashboard-added site's display name. The SSH login (host, port, username, key file, pinned host key)
+        is stored with the site's link, not its name, so it is kept. Reports and history are stored under the name."""
+        target = next((t for t in self.targets if t["slug"] == slug), None)
+        if target is None:
+            raise ValueError("Unknown site")
+        name = (name or "").strip()
+        if not name or len(name) > 60:
+            raise ValueError("Name must be 1 to 60 characters")
+        if name == target.get("name"):
+            return slug
+        if not target.get("managed"):
+            raise ValueError("This site is defined in config.yaml; rename it there")
+        sites = load_managed_sites(self.config)
+        entry = next((s for s in sites if s["url"].rstrip("/").lower() == target["url"].rstrip("/").lower()), None)
+        if entry is None:
+            raise ValueError("Unknown site")
+        entry["name"] = name
+        save_managed_sites(self.config, sites)
+        self._reload_targets()
+        return next(t for t in self.targets if t["url"].rstrip("/").lower() == target["url"].rstrip("/").lower())["slug"]
+
+    def change_site_url(self, slug, url):
+        """Change a dashboard-added site's link. The SSH login is kept: the server's host, port, username, key file
+        and pinned host key are saved with the site, not derived from the link. Returns the site's slug."""
+        target = next((t for t in self.targets if t["slug"] == slug), None)
+        if target is None:
+            raise ValueError("Unknown site")
+        url = _normalize_site_url(url)
+        old_key = target["url"].rstrip("/").lower()
+        if url.rstrip("/").lower() == old_key:
+            return slug
+        if not target.get("managed"):
+            raise ValueError("This site is defined in config.yaml; change its link there")
+        if any(t["url"].rstrip("/").lower() == url.rstrip("/").lower() for t in self.targets):
+            raise ValueError("This website is already being monitored")
+        sites = load_managed_sites(self.config)
+        entry = next((s for s in sites if s["url"].rstrip("/").lower() == old_key), None)
+        if entry is None:
+            raise ValueError("Unknown site")
+        entry["url"] = url
+        save_managed_sites(self.config, sites)
+        self._reload_targets()
+        return next(t for t in self.targets if t["url"].rstrip("/").lower() == url.rstrip("/").lower())["slug"]
+
+    def _watch_info(self, slug):
+        """How many files the one-minute watch holds and when it last ran, for the connected-status dialog."""
+        saved = _read_json(Path(self.config["report"]["state_dir"]) / f"{slug}.filewatch.json") or {}
+        files = saved.get("all_files")
+        return {"files": len(files) if isinstance(files, dict) and files else None, "checked_at": saved.get("checked_at")}
+
+    def disconnect_ssh(self, slug):
+        """Remove a dashboard-added site's SSH login and delete its saved key. The site stays, with its outside checks."""
+        target = next((t for t in self.targets if t["slug"] == slug), None)
+        if target is None:
+            raise ValueError("Unknown site")
+        if not target.get("managed"):
+            raise ValueError("This site is defined in config.yaml; change its SSH login there")
+        sites = load_managed_sites(self.config)
+        entry = next((s for s in sites if s["url"].rstrip("/").lower() == target["url"].rstrip("/").lower()), None)
+        ssh = ((entry or {}).get("checks") or {}).get("malware", {}).get("ssh")
+        if not ssh:
+            raise ValueError("This site has no SSH login")
+        del entry["checks"]["malware"]["ssh"]
+        if not entry["checks"]["malware"]:
+            del entry["checks"]["malware"]
+        if not entry["checks"]:
+            del entry["checks"]
+        save_managed_sites(self.config, sites)
+        for path in (ssh.get("key_file"), (Path(self.config["report"]["state_dir"]) / f"{slug}.filewatch.json").as_posix()):
+            try:
+                Path(path).unlink()
+            except (OSError, TypeError):
+                pass
+        self._reload_targets()
+
     def get_credentials(self, slug):
         """The saved login of a site, for the edit form. Served only to a logged-in dashboard session and never put in
         the dashboard page's data."""
@@ -323,7 +430,8 @@ class DashboardServer:
                 key = Path(ssh["key_file"]).read_text(encoding="utf-8")
             except (OSError, KeyError):
                 key = ""
-            return {"kind": "ssh", "username": ssh.get("username", ""), "private_key": key}
+            return {"kind": "ssh", "username": ssh.get("username", ""), "private_key": key, "host": ssh.get("host", ""),
+                    "port": ssh.get("port") or "", "web_root": ssh.get("web_root", ""), **self._watch_info(slug)}
         wp = target["checks"].get("wordpress", {})
         auth = wp_credentials(wp) if wp.get("enabled") else None
         return {"kind": "wordpress", "username": auth[0] if auth else wp.get("username", ""),
@@ -342,8 +450,9 @@ class DashboardServer:
             if not target.get("managed") or entry is None:
                 raise ValueError("This site is defined in config.yaml; change its SSH login there")
             old = (entry.get("checks") or {}).get("malware", {}).get("ssh", {})
-            ssh = {**{"host": old.get("host"), "port": old.get("port"), "web_root": old.get("web_root")},
-                   **{k: v for k, v in ssh.items() if v}}
+            web_root = ssh["web_root"] if "web_root" in ssh else old.get("web_root")   # blank: search for it again
+            ssh = {**{"host": old.get("host"), "port": old.get("port")}, **{k: v for k, v in ssh.items() if v},
+                   "web_root": web_root}
             if not (ssh.get("private_key") or ssh.get("key_id")) and old.get("key_file"):
                 ssh["private_key"] = Path(old["key_file"]).read_text(encoding="utf-8")
             probe_entry = {}
@@ -717,9 +826,95 @@ class DashboardServer:
                     log.exception("Autonomous defense failed for %s", slug)
             time.sleep(60)
 
+    def _filewatch_one(self, target):
+        """One quick check for a site with SSH access, every minute: the server's files and the outside of the site
+        (certificate, headers, DNS, homepage scripts and code). Anything new or malicious goes to Teams at once."""
+        ssh = target["checks"].get("malware", {}).get("ssh") or {}
+        path = Path(self.config["report"]["state_dir"]) / f"{target['slug']}.filewatch.json"
+        try:
+            saved = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            saved = {}
+        items, state = [], {"all_files": saved.get("all_files"), "outside": saved.get("outside"),
+                            "live": saved.get("live") or []}   # (older state held code files only)
+        try:
+            if ssh.get("host"):   # a site without SSH access gets the outside watch only
+                state["all_files"], found = ssh_inside.quick_check(ssh, saved.get("all_files"))
+                items += found
+        except Exception as exc:  # a login or network problem: the full scan reports it; try again next minute
+            log.debug("File watch for %s failed: %s", target["slug"], exc)
+        try:
+            state["outside"], found = live_watch.quick_outside(target["url"], saved.get("outside"))
+            items += found
+        except Exception as exc:
+            log.debug("Outside watch for %s failed: %s", target["slug"], exc)
+        seen = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        try:   # the checks the quick outside watch doesn't cover, run for real each minute (state is not changed)
+            findings, _, _, _ = self.agent.monitor_checks(target, WATCH_CHECKS)
+            state["live_checks"] = [{"severity": f.severity.name, "check": f.check, "kind": "New problem",
+                                     "title": f"Live watch: {f.title}", "detail": f.detail,
+                                     "recommendation": f.recommendation, "seen": seen}
+                                    for f in findings if f.severity >= Sev.MEDIUM]   # the current picture, not a list that grows
+            items += state["live_checks"]
+        except Exception as exc:
+            state["live_checks"] = saved.get("live_checks") or []
+            log.debug("Outside checks for %s failed: %s", target["slug"], exc)
+        titles = {i["title"] for i in state["live"]}   # problems and changes found this minute stay in the results
+        state["live"] += [{**i, "seen": seen} for i in items if i["title"] not in titles and i not in state["live_checks"]
+                          and Sev[i["severity"]] >= Sev.LOW][:50]
+        state["live"] = state["live"][-100:]
+        if state["all_files"] is None and state["outside"] is None:
+            return
+        state["checked_at"] = datetime.now(timezone.utc).isoformat()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state), encoding="utf-8")
+        if items:
+            log.warning("Watch: %d new problem(s) on %s", len(items), target["slug"])
+            send_urgent_alert(self.config, target, items)
+
+    def _clear_live(self, slug):
+        path = Path(self.config["report"]["state_dir"]) / f"{slug}.filewatch.json"
+        try:
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            if saved.get("live") or saved.get("live_checks"):
+                saved["live"], saved["live_checks"] = [], []
+                path.write_text(json.dumps(saved), encoding="utf-8")
+        except (OSError, ValueError):
+            pass
+
+    def run_filewatch_forever(self, first_delay=30):
+        """Every schedule.file_watch_seconds (default 60) watch every site from outside, and list the files of each SSH
+        site, so an attack is noticed within a minute instead of at the next full scan.
+        A site is skipped while its previous check is still running."""
+        seconds = max(15, int(self.config["schedule"].get("file_watch_seconds") or 0))
+        if not self.config["schedule"].get("file_watch_seconds"):
+            return
+        running, lock = set(), threading.Lock()
+        pool = ThreadPoolExecutor(max_workers=3)
+
+        def job(target):
+            try:
+                self._filewatch_one(target)
+            finally:
+                with lock:
+                    running.discard(target["slug"])
+
+        time.sleep(first_delay)
+        while True:
+            for target in list(self.targets):
+                with lock:
+                    if target["slug"] in running:
+                        continue
+                    running.add(target["slug"])
+                pool.submit(job, target)
+            time.sleep(seconds)
+
     # ---- scans ------------------------------------------------------------
-    def start_scan(self, slug=None, scheduled=False):
-        targets = [t for t in self.targets if slug in (None, t["slug"])]
+    def start_scan(self, slug=None, scheduled=False, without_ssh=False):
+        """without_ssh (the automatic scans): only sites with no SSH access. A site with SSH gets one full scan when it
+        is added (or when you click Scan), then the one-minute watch covers its files and the outside of the site."""
+        targets = [t for t in self.targets if slug in (None, t["slug"])
+                   and not (without_ssh and (t["checks"].get("malware", {}).get("ssh") or {}).get("host"))]
         if not targets:
             return False, "no sites to scan"
         with self.lock:
@@ -730,10 +925,21 @@ class DashboardServer:
         threading.Thread(target=self._scan, args=(targets, scheduled), daemon=True).start()
         return True, "started"
 
+    def stop_scan(self):
+        """Ask the running scan to stop at its next step. Nothing from the stopped scan is saved."""
+        with self.lock:
+            if not self.status["running"]:
+                return False
+            self.status["stopping"] = True
+        ssh_inside.CANCEL.set()
+        return True
+
     def _scan(self, targets, scheduled=False):
         error = None
+        ssh_inside.CANCEL.clear()
         def scan_one(target):
             self.agent._safe_scan(target)  # never raises; a failed scan is recorded as a finding
+            self._clear_live(target["slug"])   # the new report covers what the watch had added
             with self.lock:
                 self.status["done"] += 1
 
@@ -742,17 +948,21 @@ class DashboardServer:
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 list(pool.map(scan_one, targets))
             write_dashboard(self.config, self.targets)
-            if scheduled:  # the daily scan: send the one Teams card with every site's high-risk issues
+            if scheduled and not ssh_inside.CANCEL.is_set():  # the daily scan: send the one Teams card with every site's high-risk issues
                 send_daily_card(self.config, self.targets)
         except Exception as exc:  # surface to the UI instead of killing the thread silently
             log.exception("Dashboard-triggered scan failed")
             error = f"{exc.__class__.__name__}: {exc}"
+        ssh_inside.CANCEL.clear()
         with self.lock:
-            self.status.update(running=False, error=error, finished_at=datetime.now(timezone.utc).isoformat())
+            self.status.update(stopping=False, running=False, error=error, finished_at=datetime.now(timezone.utc).isoformat())
 
     def snapshot_status(self):
         with self.lock:
-            return dict(self.status)
+            status = dict(self.status)
+        if status["running"] and ssh_inside.PROGRESS:
+            status["ssh"] = dict(ssh_inside.PROGRESS)
+        return status
 
     # ---- HTTP -------------------------------------------------------------
     def _handler(self):
@@ -899,9 +1109,21 @@ class DashboardServer:
                         return self._json(200, {"ok": True, **server.get_credentials(body.get("slug"))})
                     if path == "/api/sites/credentials":
                         ssh = body.get("ssh") if isinstance(body.get("ssh"), dict) else None
-                        server.update_credentials(body.get("slug"), body.get("wp_username"), body.get("wp_password"), ssh)
-                        scan = server.start_scan(body.get("slug")) if body.get("scan") else (False, "not requested")
+                        slug = body.get("slug")
+                        if body.get("name") is not None:
+                            slug = server.rename_site(slug, body.get("name"))
+                        if body.get("url") is not None:
+                            slug = server.change_site_url(slug, body.get("url"))
+                        server.update_credentials(slug, body.get("wp_username"), body.get("wp_password"), ssh)
+                        scan = server.start_scan(slug) if body.get("scan") else (False, "not requested")
                         return self._json(200, {"ok": True, "scan_started": scan[0]})
+                    if path == "/api/scan/stop":
+                        stopped = server.stop_scan()
+                        return self._json(200 if stopped else 409, {"ok": stopped,
+                                          "message": "stopping" if stopped else "no scan is running"})
+                    if path == "/api/sites/ssh/disconnect":
+                        server.disconnect_ssh(body.get("slug"))
+                        return self._json(200, {"ok": True})
                     if path == "/api/ssh/keygen":
                         key_id, public = server.generate_ssh_key()
                         return self._json(200, {"ok": True, "key_id": key_id, "public_key": public})

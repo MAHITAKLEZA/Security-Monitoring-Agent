@@ -96,7 +96,10 @@ def write_reports(report, output_dir, stamp):
         (directory / f"{name}.xlsx").write_bytes(as_xlsx)
         paths += [directory / f"{name}.json", directory / f"{name}.md", directory / f"{name}.xlsx"]
     with open(out / "history.jsonl", "a", encoding="utf-8") as fh:
-        fh.write(json.dumps({k: report[k] for k in ("started_at", "security_status", "risk_score", "severity_counts")}) + "\n")
+        row = {k: report[k] for k in ("started_at", "security_status", "risk_score", "severity_counts")}
+        # Issues (MEDIUM or worse) per check, so the dashboard can draw trends per category
+        row["check_issues"] = dict(Counter(f["check"] for f in report["findings"] if S[f["severity"]] >= S.MEDIUM))
+        fh.write(json.dumps(row) + "\n")
     return paths
 
 

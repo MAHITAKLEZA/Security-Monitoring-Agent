@@ -89,12 +89,18 @@ def _site_alerts(config, targets, threshold):
         except (OSError, ValueError):
             continue
         latest = apply_ignored(latest, ignored.get(t["slug"], {}))
-        alerts = [f for f in latest.get("findings", []) if S.parse(f["severity"]) >= threshold]
+        alerts = [f for f in latest.get("findings", []) if S.parse(f["severity"]) >= threshold and not _plugin_issue(f)]
         if alerts:
             rows.append({"name": t["name"], "slug": t["slug"], "latest": latest, "alerts": alerts})
     # Worst first: CRITICAL before HIGH, then the lowest risk score
     rows.sort(key=lambda r: (-S.parse(r["latest"]["worst_severity"]), r["latest"].get("risk_score", 100)))
     return rows
+
+
+def _plugin_issue(finding):
+    """Plugin findings of the WordPress check (vulnerable, removed, outdated...): shown in the dashboard, never sent
+    to Teams. Malware found inside a plugin's files is reported by other checks and still alerted."""
+    return finding.get("check") == "wordpress" and "plugin" in finding.get("title", "").lower()
 
 
 def _key(row, finding):
@@ -238,7 +244,10 @@ def urgent_from_scan(config, target, report, previous, started):
     ignored = load_ignored(config).get(target["slug"], {})
     items = []
     known = {ignore_key(f"{f.get('check')}|{f.get('title')}") for f in (previous or {}).get("findings", [])}
+    watched = bool(config["schedule"].get("file_watch_seconds"))   # the one-minute file watch already alerts on new files
     for f in report.get("findings", []):
+        if watched and f["title"].endswith("New server-side code files since the last scan"):
+            continue
         if S.parse(f["severity"]) in URGENT and ignore_key(f["title"]) not in ignored \
                 and ignore_key(f"{f['check']}|{f['title']}") not in known:
             items.append({"severity": f["severity"], "title": f["title"], "detail": f.get("detail", ""),
@@ -279,8 +288,8 @@ def send_urgent_alert(config, target, items):
     now = datetime.now(timezone.utc)
     fresh, keys = [], set()
     for item in items:
-        if S.parse(item["severity"]) not in URGENT or item["kind"] == "Fixed automatically":   # only what needs a person
-            continue
+        if S.parse(item["severity"]) not in URGENT or item["kind"] == "Fixed automatically" or _plugin_issue(item):
+            continue   # only what needs a person
         key = _sent_key(target, item)
         if key in keys or key in sent:
             continue

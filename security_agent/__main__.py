@@ -82,25 +82,34 @@ def main(argv=None):
         return 0
     if args.serve:
         server = DashboardServer(agent, config, targets, port=args.port)
-        if args.loop or not daily_at:
+        if not args.loop and not daily_at:
+            # No repeating full scan: each site is scanned when it is added (or you click Scan), then the one-minute
+            # watch covers it and sends anything suspicious to Teams at once
+            config["schedule"].update(active=True, mode="watch")
+            print("Full scan when a site is added or you click Scan; every site is watched every minute", flush=True)
+        elif args.loop:
             # Every `interval` minutes, through the server so the dashboard shows progress and scans never overlap.
-            # Teams gets each new HIGH/CRITICAL problem once, right after the scan that finds it.
+            # Teams gets each new HIGH/CRITICAL problem once, right after the scan that finds it. Sites with SSH
+            # access are left to the one-minute file watch (a scan runs when they are added or you click Scan).
             config["schedule"].update(interval_minutes=interval, active=True, mode="interval")
-            threading.Thread(target=agent.run_interval, args=(interval, lambda: server.start_scan(None)),
-                             daemon=True).start()
-            print(f"Scanning all sites every {interval:g} minute(s)", flush=True)
+            threading.Thread(target=agent.run_interval,
+                             args=(interval, lambda: server.start_scan(None, without_ssh=True), True), daemon=True).start()
+            print(f"Scanning sites without SSH access every {interval:g} minute(s), the first one {interval:g} minute(s) "
+                  "after start; sites with SSH are watched", flush=True)
         elif daily_at:
             config["schedule"].update(active=True, mode="daily")
             # Runs through the server so the dashboard shows progress and never overlaps a scan started from the page
             tz = schedule_tz(config["schedule"].get("timezone"))
             # scheduled=True: the Teams card is sent once this daily scan finishes
             threading.Thread(target=agent.run_daily,
-                             args=(daily_at, lambda: server.start_scan(None, scheduled=True), tz), daemon=True).start()
+                             args=(daily_at, lambda: server.start_scan(None, scheduled=True, without_ssh=True), tz), daemon=True).start()
             zone = config["schedule"].get("timezone") or "local time"
             print(f"Scanning all sites daily at {daily_at} {zone} "
                   f"(next: {next_daily_run(daily_at, tz=tz):%Y-%m-%d %H:%M})", flush=True)
         # Phase 3 integrity monitor: WordPress sites with an application password, between the full scans
         threading.Thread(target=server.run_defense_forever, daemon=True).start()
+        # Quick file check every minute for sites with SSH access (new server-side files -> Teams at once)
+        threading.Thread(target=server.run_filewatch_forever, daemon=True).start()
         server.serve_forever(open_browser=not args.no_browser)
         return 0
     if args.loop:

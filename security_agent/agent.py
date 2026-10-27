@@ -10,7 +10,7 @@ from pathlib import Path
 
 import requests
 
-from .checks import ALL_CHECKS
+from .checks import ALL_CHECKS, ssh_inside
 from .checks.wordpress import credentials as wp_credentials
 from .checks.ssl_check import RETRY_DELAYS
 from .dashboard import write_dashboard
@@ -134,6 +134,8 @@ class SecurityMonitoringAgent:
             time.sleep(delay)
 
         for name, module in ALL_CHECKS.items():
+            if ssh_inside.CANCEL.is_set():
+                raise ssh_inside.ScanStopped()
             check_cfg = target["checks"].get(name, {})
             if not check_cfg.get("enabled", True) or (self.only and name not in self.only) \
                     or (checks is not None and name not in checks):
@@ -143,6 +145,8 @@ class SecurityMonitoringAgent:
             try:
                 findings.extend(module.run(ctx, check_cfg, state))
                 completed.append(name)
+            except ssh_inside.ScanStopped:   # the Stop button, not a failure
+                raise
             except Exception as exc:  # one failing check must not stop the scan
                 log.exception("[%s] Check %s failed", target["name"], name)
                 findings.append(Finding(name, f"Check '{name}' could not complete", S.INFO,
@@ -192,6 +196,12 @@ class SecurityMonitoringAgent:
     def _safe_scan(self, target):
         try:
             return self.scan_site(target)
+        except ssh_inside.ScanStopped:   # stopped from the dashboard: nothing is saved
+            log.info("[%s] Scan stopped", target["name"])
+            now = datetime.now(timezone.utc)
+            report = build_report(target["url"], [], now, now, {})
+            report["site"], report["report_files"] = target["name"], []
+            return report
         except Exception as exc:
             log.exception("[%s] Scan failed", target["name"])
             now = datetime.now(timezone.utc)
@@ -229,8 +239,11 @@ class SecurityMonitoringAgent:
             except Exception:
                 log.exception("Scheduled scan failed")
 
-    def run_interval(self, interval_minutes, job):
-        """Run `job` now and then every `interval_minutes` (the dashboard's scan, so scans never overlap)."""
+    def run_interval(self, interval_minutes, job, wait_first=False):
+        """Run `job` now (unless wait_first) and then every `interval_minutes` (the dashboard's scan, so scans never
+        overlap)."""
+        if wait_first:
+            time.sleep(max(1, interval_minutes) * 60)
         while True:
             try:
                 job()
