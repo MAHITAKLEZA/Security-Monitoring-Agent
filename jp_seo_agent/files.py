@@ -29,15 +29,18 @@ PHP_SIGS = [
     ("shell command run from request data", r"\b(?:system|shell_exec|passthru|exec|popen|proc_open|pcntl_exec)\s*\(\s*"
      r"\$_(?:POST|GET|REQUEST|COOKIE|SERVER)", "CRITICAL"),
     ("function name taken from request data", r"\$_(?:POST|GET|REQUEST|COOKIE)\s*\[[^\]]+\]\s*\(", "CRITICAL"),
-    ("known web shell", r"FilesMan|c99shell|r57shell|\bWSO\s*[0-9.]+|b374k|AlfaTeam|IndoXploit|Mr\.Combet", "CRITICAL"),
+    # "WSO 2.5" is case-sensitive: case-blind, "wso1" turns up by chance in base64 (certificates, encoded fonts)
+    ("known web shell", r"FilesMan|c99shell|r57shell|(?-i:\bWSO\s+[0-9]\.[0-9])|b374k|AlfaTeam|IndoXploit|Mr\.Combet",
+     "CRITICAL"),
     ("search-engine User-Agent check (cloaking)", r"HTTP_USER_AGENT[^;\n]{0,200}(?:googlebot|google|bingbot|yahoo|slurp|"
      r"baiduspider|yandex)", "HIGH"),
     ("search-engine referrer check (redirect cloaking)", r"HTTP_REFERER[^;\n]{0,200}(?:google|bing|yahoo|yandex|baidu)",
      "HIGH"),
     ("remote code downloaded and run or saved", r"(?:file_get_contents|curl_exec|fopen)\s*\([^;]{0,200}https?://"
      r"[^;]{0,300}(?:eval|include|require|file_put_contents)", "HIGH"),
-    ("include of a non-PHP file", r"(?:include|require)(?:_once)?\s*\(?[^;]{0,150}\.(?:ico|png|jpe?g|gif|txt|css)['\"]",
-     "HIGH"),
+    # \b...\b: "includes_url(...gif')" and "wp-includes/" are not include statements
+    ("include of a non-PHP file", r"\b(?:include|require)(?:_once)?\b\s*\(?\s*[^;]{0,150}\.(?:ico|png|jpe?g|gif|txt|css)"
+     r"['\"]", "HIGH"),
     ("long base64 blob (obfuscation)", r"['\"][A-Za-z0-9+/]{3000,}={0,2}['\"]", "MEDIUM"),
     ("hex-escaped string (obfuscation)", r"(?:\\x[0-9a-fA-F]{2}){60,}", "MEDIUM"),
     ("create_function() (deprecated, used by malware)", r"\bcreate_function\s*\(", "MEDIUM"),
@@ -45,15 +48,18 @@ PHP_SIGS = [
      "CRITICAL"),
     ("file upload saved without checks", r"move_uploaded_file\s*\(\s*\$_FILES\s*\[[^\]]+\]\s*\[\s*['\"]tmp_name['\"]\s*\]"
      r"\s*,\s*[^;]*\$_FILES\s*\[[^\]]+\]\s*\[\s*['\"]name['\"]", "HIGH"),
-    ("callback run on request data", r"\b(?:call_user_func(?:_array)?|array_map|array_filter|usort|uasort|uksort|"
-     r"register_shutdown_function|forward_static_call)\s*\(\s*\$_(?:POST|GET|REQUEST|COOKIE)", "CRITICAL"),
+    # The callback is the first argument of call_user_func/array_map, the second of array_filter/usort/array_walk
+    # (array_filter($_POST[...]) only filters the data)
+    ("callback run on request data", r"\b(?:call_user_func(?:_array)?|array_map|register_shutdown_function|"
+     r"forward_static_call)\s*\(\s*\$_(?:POST|GET|REQUEST|COOKIE)|\b(?:array_filter|array_walk|usort|uasort|uksort)"
+     r"\s*\([^,;()]+,\s*\$_(?:POST|GET|REQUEST|COOKIE)", "CRITICAL"),
     ("eval of a decoded variable", r"\$(\w+)\s*=\s*(?:base64_decode|gzinflate|gzuncompress|str_rot13|hex2bin|strrev)"
      r"\s*\([^;]{0,3000};[^{}]{0,300}\beval\s*\(\s*\$\1\b", "CRITICAL"),
     ("backtick shell command from request data", r"`[^`\n]{0,80}\$_(?:POST|GET|REQUEST|COOKIE)[^`\n]{0,80}`", "CRITICAL"),
     ("errors silenced with remote include", r"@\s*(?:include|require)(?:_once)?\s*\(?\s*['\"]?https?://", "CRITICAL"),
     ("variable function built from character codes", r"(?:chr\s*\(\s*\d+\s*\)\s*\.\s*){6,}", "HIGH"),
-    ("known web shell (more families)", r"Weevely|China Chopper|Mini Shell|Gecko Shell|PHPSpy|Dx\.?shell|webshell|"
-     r"Priv8|Safe.?mode:\s|Uname:\s", "HIGH"),
+    # Shell names only: "Safe mode:", "Uname:" and "webshell" also appear in theme support tools, logs and security plugins
+    ("known web shell (more families)", r"Weevely|China Chopper|Mini Shell|Gecko Shell|PHPSpy|Dx\.?shell|Priv8", "HIGH"),
 ]
 HTACCESS_SIGS = [
     ("auto_prepend_file / auto_append_file", r"auto_(?:prepend|append)_file", "CRITICAL"),
@@ -68,9 +74,14 @@ HTACCESS_SIGS = [
 # Malicious uploads that hide from the plain ".php" test: a script with a second extension (shell.php.jpg, run by
 # servers that map any ".php." name to PHP), pages and programs dropped among the media, and PHP inside a real image.
 MEDIA_EXT = re.compile(r"\.(?:jpe?g|png|gif|webp|bmp|ico|tiff?)$", re.I)
-DISGUISED_EXT = re.compile(r"\.(?:php\d?|phtml|phar|pht|phps|inc|cgi|pl|py|sh|asp|aspx|jsp|exe|dll)\.[a-z0-9]{1,5}$", re.I)
+# The last extension must be one a server won't run as code itself: "x.inc.php" is a plain PHP file and
+# "installer.php.bak" a backup (reported as such), neither is disguised.
+DISGUISED_EXT = re.compile(r"\.(?:php\d?|phtml|phar|pht|phps|inc|cgi|pl|py|sh|asp|aspx|jsp|exe|dll)"
+                           r"\.(?!(?:php\d?|phtml|inc|bak|old|orig|save|swp|dist|sample|txt|md|log)$)[a-z0-9]{1,5}$", re.I)
 UPLOAD_PAGE_EXT = re.compile(r"\.(?:html?|xhtml|js|mjs|exe|dll|msi|bat|cmd|scr|vbs|hta|jar|sh)$", re.I)
-PHP_OPEN_TAG = re.compile(r"<\?php|<\?=", re.I)
+# Strict on purpose, it runs on binary data: the bare 3 bytes "<?=" turn up by chance in compressed images, fonts
+# and PDFs. Real PHP has "<?php" plus a space or line break, or "<?=" printing a variable.
+PHP_OPEN_TAG = re.compile(r"<\?php\s|<\?=\s*\$\w", re.I)
 PHP_SIGS = [(n, re.compile(p, re.I), s) for n, p, s in PHP_SIGS]
 HTACCESS_SIGS = [(n, re.compile(p, re.I), s) for n, p, s in HTACCESS_SIGS]
 EXTERNAL_REWRITE = re.compile(r"RewriteRule\s+\S+\s+(https?://[^\s\[]+)", re.I)

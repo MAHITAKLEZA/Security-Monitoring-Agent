@@ -19,7 +19,10 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from jp_seo_agent.files import CODE_EXT, DISGUISED_EXT, HTACCESS_SIGS, MEDIA_EXT, PHP_OPEN_TAG, PHP_SIGS
+from urllib.parse import urlparse
+
+from jp_seo_agent.files import (CODE_EXT, DISGUISED_EXT, HTACCESS_SIGS, MEDIA_EXT, PHP_OPEN_TAG, PHP_SIGS,
+                                core_checksums, plugin_checksums)
 
 from ..models import Finding, Severity as S
 from .malware import PATTERNS as JS_SIGS, SPAM_WORDS
@@ -279,13 +282,16 @@ def _walk(sftps, root, notes):
     return files
 
 
+_JS_SIGS = [(n, rx, s.name) for n, rx, s in JS_SIGS]
+
+
 def _sigs(name):
     if CONFIG_FILES.match(name):
         return HTACCESS_SIGS
     if CODE_EXT.search(name):
         return PHP_SIGS
     if WEB_CODE.search(name):
-        return [(n, rx, s.name) for n, rx, s in JS_SIGS]
+        return _JS_SIGS
     if name.lower().endswith(".svg"):
         return [("script inside an SVG image", SVG_SCRIPT, "HIGH")]
     if MEDIA_EXT.search(name):
@@ -313,7 +319,8 @@ def _spam_hits(text):
     hits = []
     for m in HIDDEN_ATTR.finditer(text):
         links = sorted(set(HREF.findall(text[m.start():m.start() + 1500])))
-        if len(links) >= 2:
+        # Spam links point to several sites; a hidden email preheader or menu links to one (HubSpot, the site itself)
+        if len({(urlparse(u).hostname or "").removeprefix("www.") for u in links}) >= 2:
             hits.append(("hidden links to other sites (SEO spam injection)", S.HIGH, ", ".join(links[:5])))
             break
     words = sorted({w.lower() for w in SPAM_WORDS.findall(re.sub(r"<[^>]+>", " ", text))})
@@ -329,10 +336,21 @@ def _content_hits(sigs, data, name):
         return _archive_hits(data)
     if sigs is BINARY:
         return _generic_hits(data, text, "")
-    found = _generic_hits(data, text, name) if sigs is GENERIC else _scan_content(text, sigs)
+    if MEDIA_EXT.search(name):   # image bytes: only real PHP means something, spam words there are chance matches
+        return _scan_content(text, sigs)
+    found = _generic_hits(data, text, name) if sigs is GENERIC else _scan_content(_strip_comments(text, sigs), sigs)
     if not TEXT_QUOTING.search(name):   # logs and docs quote spam words without being spam
         found += _spam_hits(text)
     return found
+
+
+BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+
+
+def _strip_comments(text, sigs):
+    """PHP and JS without their /* ... */ blocks: docblocks quote `$_POST`, `<?php echo ... ?>` and other code that
+    never runs. Line comments stay, a "//" can't be told apart from one inside a URL string without parsing."""
+    return BLOCK_COMMENT.sub(" ", text) if sigs is PHP_SIGS or sigs is _JS_SIGS else text
 
 
 def _archive_hits(data):
@@ -355,6 +373,13 @@ def _archive_hits(data):
 
 TEXT_QUOTING = re.compile(r"\.(?:log|md|rst|csv|po|pot|lock)$", re.I)
 ENCODED_BLOB = re.compile(r"[A-Za-z0-9+/=]{4000,}")   # base64 or hex with no spaces or line breaks
+DANGEROUS_CALL = re.compile(r"\b(?:eval|assert|base64_decode|gzinflate|gzuncompress|str_rot13|system|shell_exec|passthru|"
+                            r"exec|popen|proc_open|create_function|file_put_contents|move_uploaded_file)\s*\(|"
+                            r"\$_(?:POST|GET|REQUEST|COOKIE|FILES)\b", re.I)
+# Data a tool keeps for itself and expects to look like this: Composer's command-line launchers start with "#!",
+# Wordfence's cached rules in wflogs are one long encoded string
+EXPECTED_HITS = [(re.compile(r"(?:^|/)vendor/bin/[^/]+$"), "script (shebang) in an unexpected file"),
+                 (re.compile(r"(?:^|/)wp-content/wflogs/[^/]+\.php$"), "long base64 blob (obfuscation)")]
 
 
 def _generic_hits(data, text, name=""):
@@ -365,7 +390,8 @@ def _generic_hits(data, text, name=""):
     elif data.startswith(b"#!"):
         hits.append(("script (shebang) in an unexpected file", S.MEDIUM, text[:100].replace("\n", " ")))
     m = PHP_OPEN_TAG.search(text)
-    if m:
+    # A readme or stylesheet may show "<?php echo ... ?>" as an example: only PHP that does something dangerous counts
+    if m and DANGEROUS_CALL.search(text, m.start(), m.start() + 5000):
         hits.append(("PHP code inside a file that isn't a PHP file", S.HIGH,
                      text[max(m.start() - 40, 0):m.end() + 100].replace("\n", " ")))
     # A .txt/.dat/.ico can hold PHP without a <?php tag (another script reads it and runs it), so the malware
@@ -398,6 +424,61 @@ def _finding(title, severity, items, detail, recommendation):
                    recommendation, {"locations": locs, "via": "ssh"})
 
 
+WP_VERSION = re.compile(r"\$wp_version\s*=\s*['\"]([^'\"]+)")
+WP_LOCALE = re.compile(r"\$wp_local_package\s*=\s*['\"]([^'\"]+)")
+PLUGIN_HEADER = re.compile(r"^[ \t/*#@]*Plugin Name\s*:", re.M | re.I)
+PLUGIN_VERSION = re.compile(r"^[ \t/*#@]*Version\s*:\s*([0-9][^\s*]*)", re.M | re.I)
+STUB_PHP = re.compile(rb"<\?php\s*(?://[^\n]*|#[^\n]*|/\*.*?\*/)?\s*(?:\?>)?", re.S)   # "<?php // Silence is golden."
+MAX_PLUGINS = 80
+RULES = 2   # raise when the detection rules change: every file is then read again with the new rules
+
+
+def _read_head(sftp, path, size=8192):
+    try:
+        with sftp.open(path, "rb") as fh:
+            return fh.read(size).decode("utf-8", "ignore")
+    except OSError:
+        return ""
+
+
+def _wordpress_files(sftp, root, files, notes):
+    """The official checksums of every WordPress install under root (the site, and copies such as an old backup
+    folder) and of its wordpress.org plugins: ({path: {md5, ...}}, [install folder prefixes with core checksums]).
+    A file that matches is the untouched release file; one that doesn't was changed on the server."""
+    official, installs, plugins = {}, [], []
+    for marker in (p for p in files if p == "wp-includes/version.php" or p.endswith("/wp-includes/version.php")):
+        prefix = marker[: -len("wp-includes/version.php")]
+        head = _read_head(sftp, f"{root}/{marker}", 65536)
+        version, locale = WP_VERSION.search(head), WP_LOCALE.search(head)
+        if not version:
+            continue
+        core = core_checksums(version.group(1), locale.group(1) if locale else "en_US")
+        if core:
+            installs.append(prefix)
+            official.update((prefix + p, {m}) for p, m in core.items())
+        else:
+            notes.append(f"no official checksums for WordPress {version.group(1)} in /{prefix or ''}")
+        plugin_dir = f"{prefix}wp-content/plugins/"
+        slugs = sorted({p[len(plugin_dir):].split("/", 1)[0] for p in files
+                        if p.startswith(plugin_dir) and "/" in p[len(plugin_dir):]})
+        for slug in slugs:
+            folder = f"{plugin_dir}{slug}/"
+            mains = sorted((p for p in files if p.startswith(folder) and "/" not in p[len(folder):] and
+                            p.endswith(".php")), key=lambda p: p != f"{folder}{slug}.php")
+            for main in mains[:5]:
+                head = _read_head(sftp, f"{root}/{main}")
+                version = PLUGIN_VERSION.search(head) if PLUGIN_HEADER.search(head) else None
+                if version:
+                    plugins.append((folder, slug, version.group(1)))
+                    break
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        sums = list(pool.map(lambda t: plugin_checksums(t[1], t[2]), plugins[:MAX_PLUGINS]))
+    for (folder, _, _), checks in zip(plugins, sums):
+        if checks:   # None: not a wordpress.org plugin (premium, custom), its files are scanned as usual
+            official.update((folder + p, {m for m in md5s if m}) for p, md5s in checks.items())
+    return official, installs
+
+
 def scan(sftp, root, state, extra=()):
     """`extra`: more (transport, sftp) sessions to the same server, used in parallel with `sftp`."""
     findings, notes = [], []
@@ -409,9 +490,20 @@ def scan(sftp, root, state, extra=()):
     old = prev or {}
     new_paths = [p for p in files if p not in old] if prev is not None else []
     changed = [p for p in files if p in old and tuple(old[p][:2]) != files[p][:2]]
+    PROGRESS.update(phase="checksums")
+    official, installs = _wordpress_files(sftp, root, files, notes)
+
+    # What each file's content showed (hits, official release file, modified release file, empty index.php), kept
+    # until the file changes: a file isn't read again while unchanged, and its findings must not vanish meanwhile.
+    # New rules mean every file is read again once.
+    same_rules = prev is not None and state.get("rules") == RULES
+    changed_set = set(changed)
+    marks = {p: m for p, m in (state.get("marks") or {}).items() if p in files and p not in changed_set} \
+        if same_rules else {}
 
     # Which contents to read: new and changed files first, then files never read before (spread over scans)
-    hashes = {p: (old[p][2] if p in old and len(old[p]) > 2 and p not in changed else None) for p in files}
+    hashes = {p: (old[p][2] if same_rules and p in old and len(old[p]) > 2 and p not in changed_set else None)
+              for p in files}
     readable = [p for p in files if not p.endswith("/") and files[p][0] <= _size_cap(_sigs(p.rsplit("/", 1)[-1]))]
     # Images are read last on the first scan (there can be thousands), but an image that just appeared is read at once
     queue = [p for p in readable if p in new_paths or p in changed] + \
@@ -434,22 +526,61 @@ def scan(sftp, root, state, extra=()):
                     data = fh.read(limit)
             except OSError:
                 continue
-            out.append((path, hashlib.sha256(data).hexdigest(),
-                        list(_content_hits(sigs, data, path.rsplit("/", 1)[-1]))))
+            out.append((path, hashlib.sha256(data).hexdigest(), _mark(path, data, sigs)))
             PROGRESS["done"] = PROGRESS.get("done", 0) + 1
         return out
 
+    def _mark(path, data, sigs):
+        leaf, mark = path.rsplit("/", 1)[-1], {}
+        expected = official.get(path)
+        found = _content_hits(sigs, data, leaf)
+        if expected and len(data) == files[path][0]:
+            if hashlib.md5(data).hexdigest() in expected:   # the untouched WordPress / plugin release file
+                mark["status"], found = "verified", []
+            else:
+                mark["status"] = "modified"
+        if leaf.lower() == "index.php" and STUB_PHP.fullmatch(data.strip()):
+            mark["stub"] = True
+        found = [h for h in found if not any(h[0] == name and rx.search(path) for rx, name in EXPECTED_HITS)]
+        if found:
+            mark["hits"] = [[name, severity.name, snippet] for name, severity, snippet in found]
+        return mark
+
     with ThreadPoolExecutor(max_workers=len(sftps)) as pool:
         results = pool.map(lambda a: read_files(*a), zip(sftps, _chunks(queue[:MAX_READS], len(sftps))))
-        for path, digest, found in (r for part in results for r in part):
+        for path, digest, mark in (r for part in results for r in part):
             if path in old and len(old[path]) > 2 and old[path][2] and old[path][2] != digest:
                 content_changed.add(path)
             hashes[path] = digest
-            for name, severity, snippet in found:
-                hits.setdefault(name, []).append((path, snippet, severity))
+            if mark:
+                marks[path] = mark
+            else:
+                marks.pop(path, None)
+    for path, mark in marks.items():
+        for name, severity, snippet in mark.get("hits", []):
+            hits.setdefault(name, []).append((path, snippet, S.parse(severity)))
     PROGRESS.clear()
     if len(queue) > MAX_READS:
         notes.append(f"{len(queue) - MAX_READS} file(s) left to read on the next scans")
+    verified = {p for p, m in marks.items() if m.get("status") == "verified"}
+    if official:
+        notes.append(f"{len(verified)} file(s) match the official WordPress and plugin releases and were skipped")
+
+    modified = sorted(p for p, m in marks.items() if m.get("status") == "modified")
+    if modified:
+        findings.append(_finding("Modified WordPress core or plugin file", S.HIGH, [(p, "") for p in modified],
+                                 "These differ from the official wordpress.org release",
+                                 "Injected code usually hides in a real core or plugin file. Compare the file with the "
+                                 "release, then reinstall WordPress core (Dashboard > Updates > Re-install) or the "
+                                 "plugin from wordpress.org."))
+    core_dirs = tuple(f"{i}{d}" for i in installs for d in ("wp-admin/", "wp-includes/"))
+    unknown_core = sorted(p for p in files if core_dirs and p.startswith(core_dirs) and CODE_EXT.search(p)
+                          and p not in official)
+    if unknown_core:
+        findings.append(_finding("Unknown PHP file in WordPress core folders", S.HIGH, [(p, "") for p in unknown_core],
+                                 "Not part of this WordPress release",
+                                 "wp-admin and wp-includes only hold WordPress's own files, a classic backdoor "
+                                 "location. Check these files and delete the ones WordPress didn't install."))
 
     for name, items in sorted(hits.items(), key=lambda kv: -max(i[2] for i in kv[1])):
         findings.append(_finding(f"Suspicious code on the server ({name})", max(i[2] for i in items),
@@ -458,8 +589,18 @@ def scan(sftp, root, state, extra=()):
                                  "as compromised: take a backup for evidence, restore the files from your clean "
                                  "source or build, then change the SSH, hosting and database passwords."))
 
+    # WordPress's own code folders hold "assets" and "images" folders with PHP in them: those files are checked
+    # against the releases and by content above, not by folder name
+    wp_code = tuple(f"{i}{d}" for i in installs for d in ("wp-admin/", "wp-includes/", "wp-content/plugins/",
+                                                            "wp-content/themes/", "wp-content/mu-plugins/"))
     php_in_uploads = [p for p in files if SERVER_CODE.search(p.rsplit("/", 1)[-1]) and not CONFIG_FILES.match(
-        p.rsplit("/", 1)[-1]) and UPLOAD_DIRS & {seg.lower() for seg in p.split("/")[:-1]}]
+        p.rsplit("/", 1)[-1]) and UPLOAD_DIRS & {seg.lower() for seg in p.split("/")[:-1]}
+        and p not in official and not (wp_code and p.startswith(wp_code))]
+    for p in php_in_uploads:   # an empty "Silence is golden" index.php only stops folder listings
+        if p not in marks and p.rsplit("/", 1)[-1].lower() == "index.php" and files[p][0] <= 512:
+            if STUB_PHP.fullmatch(_read_head(sftp, f"{root}/{p}", 512).encode().strip()):
+                marks[p] = {"stub": True}
+    php_in_uploads = [p for p in php_in_uploads if not marks.get(p, {}).get("stub")]
     if php_in_uploads:
         findings.append(_finding("Server-side script in an upload or media folder", S.HIGH,
                                  [(p, "") for p in php_in_uploads], "Found",
@@ -468,7 +609,7 @@ def scan(sftp, root, state, extra=()):
                                  "there, and stop scripts running in that folder."))
 
     in_uploads = lambda p: bool(UPLOAD_DIRS & {seg.lower() for seg in p.split("/")[:-1]})
-    disguised = [p for p in files if DISGUISED_EXT.search(p.rsplit("/", 1)[-1])]
+    disguised = [p for p in files if DISGUISED_EXT.search(p.rsplit("/", 1)[-1]) and p not in official]
     if disguised:
         findings.append(_finding("Disguised script file (double extension)", S.HIGH, [(p, "") for p in disguised],
                                  "Found",
@@ -482,7 +623,8 @@ def scan(sftp, root, state, extra=()):
                                  "Attackers host malware among uploaded files. Open each one and delete it if your "
                                  "team didn't upload it."))
 
-    sensitive = [p.rstrip("/") for p in files if SENSITIVE.search(p.rstrip("/").rsplit("/", 1)[-1])]
+    sensitive = [p.rstrip("/") for p in files if SENSITIVE.search(p.rstrip("/").rsplit("/", 1)[-1])
+                 and p not in official]   # a plugin's own .sql schema or public key file is part of its release
     if sensitive:
         findings.append(_finding("Secret or backup file inside the web folder", S.MEDIUM, [(p, "") for p in sensitive],
                                  "Found",
@@ -498,22 +640,23 @@ def scan(sftp, root, state, extra=()):
                                  "can't change them."))
 
     if prev is not None:
-        new_code = [p for p in new_paths if SERVER_CODE.search(p.rsplit("/", 1)[-1])]
+        # A WordPress or plugin update adds and changes release files: those are not news
+        new_code = [p for p in new_paths if SERVER_CODE.search(p.rsplit("/", 1)[-1]) and p not in verified]
         if new_code:
             findings.append(_finding("New server-side code files since the last scan", S.HIGH,
                                      [(p, "") for p in new_code], "New",
                                      "If nobody on your team deployed these, check them now: a new PHP or other script "
                                      "file, or .htaccess, is the usual first sign of a break-in."))
         changed_code = [p for p in changed if SERVER_CODE.search(p.rsplit("/", 1)[-1])
-                        and (p in content_changed or hashes.get(p) is None)]
+                        and (p in content_changed or hashes.get(p) is None) and p not in verified]
         if changed_code:
             findings.append(_finding("Server-side code files changed since the last scan", S.MEDIUM,
                                      [(p, "") for p in changed_code], "Changed",
                                      "Confirm these changes came from your own deployment. If not, compare them with "
                                      "your source code and restore the clean version."))
 
-    state.update(root=root, files={p: [s, m, hashes.get(p)] for p, (s, m, _) in files.items()},
-                 scanned_at=datetime.now(timezone.utc).isoformat())
+    state.update(root=root, files={p: [s, m, hashes.get(p)] for p, (s, m, _) in files.items()}, marks=marks,
+                 rules=RULES, scanned_at=datetime.now(timezone.utc).isoformat())
     summary = (f"{len(files)} files in {root}; {len(new_paths)} new, {len(changed)} changed, "
                f"{min(len(queue), MAX_READS)} read" + (f"; {'; '.join(notes)}" if notes else ""))
     if prev is None:
