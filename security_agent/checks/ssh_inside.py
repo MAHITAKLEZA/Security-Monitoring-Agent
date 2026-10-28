@@ -428,9 +428,15 @@ WP_VERSION = re.compile(r"\$wp_version\s*=\s*['\"]([^'\"]+)")
 WP_LOCALE = re.compile(r"\$wp_local_package\s*=\s*['\"]([^'\"]+)")
 PLUGIN_HEADER = re.compile(r"^[ \t/*#@]*Plugin Name\s*:", re.M | re.I)
 PLUGIN_VERSION = re.compile(r"^[ \t/*#@]*Version\s*:\s*([0-9][^\s*]*)", re.M | re.I)
-STUB_PHP = re.compile(rb"<\?php\s*(?://[^\n]*|#[^\n]*|/\*.*?\*/)?\s*(?:\?>)?", re.S)   # "<?php // Silence is golden."
+STUB_PHP = re.compile(rb"<\?php\s*(?:(?://|#)[^\n]*\s*|/\*.*?\*/\s*)*(?:\?>[^<]*)?", re.S)   # "<?php // Silence is golden."
 MAX_PLUGINS = 80
 RULES = 2   # raise when the detection rules change: every file is then read again with the new rules
+
+
+def _is_stub(data):
+    """An index.php that only stops folder listings: empty, plain text (no PHP tag, nothing runs), or comments."""
+    data = data.lstrip(b"\xef\xbb\xbf").strip()
+    return b"<?" not in data or bool(STUB_PHP.fullmatch(data))
 
 
 def _read_head(sftp, path, size=8192):
@@ -445,7 +451,7 @@ def _wordpress_files(sftp, root, files, notes):
     """The official checksums of every WordPress install under root (the site, and copies such as an old backup
     folder) and of its wordpress.org plugins: ({path: {md5, ...}}, [install folder prefixes with core checksums]).
     A file that matches is the untouched release file; one that doesn't was changed on the server."""
-    official, installs, plugins = {}, [], []
+    official, installs, plugins, bundled = {}, [], [], set()
     for marker in (p for p in files if p == "wp-includes/version.php" or p.endswith("/wp-includes/version.php")):
         prefix = marker[: -len("wp-includes/version.php")]
         head = _read_head(sftp, f"{root}/{marker}", 65536)
@@ -456,6 +462,7 @@ def _wordpress_files(sftp, root, files, notes):
         if core:
             installs.append(prefix)
             official.update((prefix + p, {m}) for p, m in core.items())
+            bundled.update(prefix + p for p in core if p.startswith("wp-content/"))
         else:
             notes.append(f"no official checksums for WordPress {version.group(1)} in /{prefix or ''}")
         plugin_dir = f"{prefix}wp-content/plugins/"
@@ -476,7 +483,10 @@ def _wordpress_files(sftp, root, files, notes):
     for (folder, _, _), checks in zip(plugins, sums):
         if checks:   # None: not a wordpress.org plugin (premium, custom), its files are scanned as usual
             official.update((folder + p, {m for m in md5s if m}) for p, md5s in checks.items())
-    return official, installs
+            bundled.difference_update(folder + p for p in checks)
+    # The default themes and Akismet ship inside core but update on their own: core's copy of them only confirms a
+    # file, a difference there just means a newer version
+    return official, installs, bundled
 
 
 def scan(sftp, root, state, extra=()):
@@ -491,7 +501,7 @@ def scan(sftp, root, state, extra=()):
     new_paths = [p for p in files if p not in old] if prev is not None else []
     changed = [p for p in files if p in old and tuple(old[p][:2]) != files[p][:2]]
     PROGRESS.update(phase="checksums")
-    official, installs = _wordpress_files(sftp, root, files, notes)
+    official, installs, bundled = _wordpress_files(sftp, root, files, notes)
 
     # What each file's content showed (hits, official release file, modified release file, empty index.php), kept
     # until the file changes: a file isn't read again while unchanged, and its findings must not vanish meanwhile.
@@ -539,7 +549,7 @@ def scan(sftp, root, state, extra=()):
                 mark["status"], found = "verified", []
             else:
                 mark["status"] = "modified"
-        if leaf.lower() == "index.php" and STUB_PHP.fullmatch(data.strip()):
+        if leaf.lower() == "index.php" and _is_stub(data):
             mark["stub"] = True
         found = [h for h in found if not any(h[0] == name and rx.search(path) for rx, name in EXPECTED_HITS)]
         if found:
@@ -566,7 +576,10 @@ def scan(sftp, root, state, extra=()):
     if official:
         notes.append(f"{len(verified)} file(s) match the official WordPress and plugin releases and were skipped")
 
-    modified = sorted(p for p, m in marks.items() if m.get("status") == "modified")
+    # Only code can carry injected malware: an image re-compressed by an optimizer or an edited stylesheet differs
+    # from the release too, and is still checked by its content
+    modified = sorted(p for p, m in marks.items() if m.get("status") == "modified" and p not in bundled
+                      and (SERVER_CODE.search(p.rsplit("/", 1)[-1]) or WEB_CODE.search(p)))
     if modified:
         findings.append(_finding("Modified WordPress core or plugin file", S.HIGH, [(p, "") for p in modified],
                                  "These differ from the official wordpress.org release",
@@ -597,9 +610,9 @@ def scan(sftp, root, state, extra=()):
         p.rsplit("/", 1)[-1]) and UPLOAD_DIRS & {seg.lower() for seg in p.split("/")[:-1]}
         and p not in official and not (wp_code and p.startswith(wp_code))]
     for p in php_in_uploads:   # an empty "Silence is golden" index.php only stops folder listings
-        if p not in marks and p.rsplit("/", 1)[-1].lower() == "index.php" and files[p][0] <= 512:
-            if STUB_PHP.fullmatch(_read_head(sftp, f"{root}/{p}", 512).encode().strip()):
-                marks[p] = {"stub": True}
+        if not marks.get(p, {}).get("stub") and p.rsplit("/", 1)[-1].lower() == "index.php" and files[p][0] <= 512:
+            if _is_stub(_read_head(sftp, f"{root}/{p}", 512).encode()):
+                marks.setdefault(p, {})["stub"] = True
     php_in_uploads = [p for p in php_in_uploads if not marks.get(p, {}).get("stub")]
     if php_in_uploads:
         findings.append(_finding("Server-side script in an upload or media folder", S.HIGH,
